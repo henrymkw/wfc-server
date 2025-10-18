@@ -45,6 +45,7 @@ type Config struct {
 	AllowConnectWithoutDeviceID bool   `xml:"allowConnectWithoutDeviceID"`
 
 	ServerName string `xml:"serverName,omitempty"`
+	MkwServerPath string `xml:"mkwServerPath,omitempty"`
 }
 
 var config Config

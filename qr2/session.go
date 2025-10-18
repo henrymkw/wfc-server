@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"wwfc/common"
 	"wwfc/logging"
@@ -78,18 +79,29 @@ func (session *Session) removeFromGroup() {
 		return
 	}
 
-	delete(session.groupPointer.players, session)
+	group := session.groupPointer
+	delete(group.players, session)
 
-	if len(session.groupPointer.players) == 0 {
-		logging.Notice("QR2", "Deleting group", aurora.Cyan(session.groupPointer.GroupName))
-		delete(groups, session.groupPointer.GroupName)
-	} else if session.groupPointer.server == session {
-		logging.Notice("QR2", "Server down in group", aurora.Cyan(session.groupPointer.GroupName))
-		session.groupPointer.server = nil
-		session.groupPointer.findNewServer()
+	if len(group.players) == 0 {
+		logging.Notice("QR2", "Deleting group", aurora.Cyan(group.GroupName))
+		if group.mkwServerProxy != nil {
+			logging.Notice("QR2", "Terminating mkw-server process for group", aurora.Cyan(group.GroupName))
+			if group.mkwServerProxy.Cmd != nil && group.mkwServerProxy.Cmd.Process != nil {
+				logging.Notice("QR2", "Terminating mkw-server process with PID", aurora.Cyan(group.mkwServerProxy.Cmd.Process.Pid))
+				group.mkwServerProxy.Cmd.Process.Signal(syscall.SIGTERM)
+			} else {
+				logging.Notice("QR2", "No mkw-server process found for group", aurora.Cyan(group.GroupName))
+			}
+
+		}
+		delete(groups, group.GroupName)
+	} else if group.server == session {
+		logging.Notice("QR2", "Server down in group", aurora.Cyan(group.GroupName))
+		group.server = nil
+		group.findNewServer()
 	}
 
-	for player := range session.groupPointer.players {
+	for player := range group.players {
 		delete(player.Data, "+conn_"+session.Data["+joinindex"])
 	}
 
@@ -97,6 +109,11 @@ func (session *Session) removeFromGroup() {
 		if strings.HasPrefix(field, "+conn_") {
 			delete(session.Data, field)
 		}
+	}
+
+	mkwServerProxy := group.mkwServerProxy
+	if mkwServerProxy != nil {
+		mkwServerProxy.sendMkwServerRemoveClient(session)
 	}
 
 	session.groupPointer = nil
@@ -142,7 +159,7 @@ func setSessionData(moduleName string, addr net.Addr, sessionId uint32, payload 
 	}
 
 	if !sessionExists {
-		logging.Info(moduleName, "Creating session", aurora.Cyan(sessionId).String())
+		logging.Info(moduleName, "Creating sessionId", aurora.Cyan(sessionId).String(), "for", addr.String())
 
 		// Set search ID
 		for {
@@ -248,6 +265,26 @@ func makeLookupAddr(addr string) uint64 {
 	return (uint64(port) << 32) | uint64(uint32(ip))
 }
 
+func DoesSessionExist(addr string) bool {
+	logging.Info("QR2", "Checking session existence for", aurora.Cyan(addr))
+	mutex.Lock()
+	_, sessionExists := sessions[makeLookupAddr(addr)]
+	mutex.Unlock()
+	return sessionExists
+}
+
+func IsSessionInGroup(addr string) bool {
+	mutex.Lock()
+	session, _ := sessions[makeLookupAddr(addr)]
+	mutex.Unlock()
+
+	if session == nil || session.groupPointer == nil {
+		return false
+	}
+
+	return session.groupPointer != nil
+}
+
 // Get a copy of the list of servers
 func GetSessionServers() []map[string]string {
 	var servers []map[string]string
@@ -332,4 +369,8 @@ func loadSessions() error {
 	}
 
 	return nil
+}
+
+func (session *Session) GetProfileId() string {
+	return session.Data["dwc_pid"]
 }

@@ -29,6 +29,9 @@ type Group struct {
 	MKWRaceNumber    int
 	MKWCourseID      int
 	MKWEngineClassID int
+
+	MKWServerEnabled bool
+	mkwServerProxy   *MKWServerProxy
 }
 
 var groups = map[string]*Group{}
@@ -42,15 +45,16 @@ func processResvOK(moduleName string, matchVersion int, reservation common.Match
 	group := sender.groupPointer
 	if group == nil {
 		group = &Group{
-			GroupID:       resvOK.GroupID,
-			GroupName:     "",
-			CreateTime:    time.Now().UTC(),
-			GameName:      sender.Data["gamename"],
-			MatchType:     sender.Data["dwc_mtype"],
-			MKWRegion:     "",
-			LastJoinIndex: 0,
-			server:        sender,
-			players:       map[*Session]bool{sender: true},
+			GroupID:        resvOK.GroupID,
+			GroupName:      "",
+			CreateTime:     time.Now().UTC(),
+			GameName:       sender.Data["gamename"],
+			MatchType:      sender.Data["dwc_mtype"],
+			MKWRegion:      "",
+			LastJoinIndex:  0,
+			server:         sender,
+			players:        map[*Session]bool{sender: true},
+			mkwServerProxy: nil,
 		}
 
 		for {
@@ -72,7 +76,10 @@ func processResvOK(moduleName string, matchVersion int, reservation common.Match
 				rk = rk[:2]
 			}
 
+			mkwServerProxy := newMKWServerProxy(group)
+			group.mkwServerProxy = mkwServerProxy
 			group.MKWRegion = rk
+			group.MKWServerEnabled = true
 		}
 
 		sender.Data["+joinindex"] = "0"
@@ -80,6 +87,7 @@ func processResvOK(moduleName string, matchVersion int, reservation common.Match
 			sender.Data["+localplayers"] = strconv.FormatUint(uint64(resvOK.LocalPlayerCount), 10)
 		}
 
+		logging.Info(moduleName, "Created new group", aurora.Cyan(group.GroupName), "with host", aurora.BrightCyan(sender.Data["dwc_pid"]))
 		sender.groupPointer = group
 		sender.GroupName = group.GroupName
 		groups[group.GroupName] = group
@@ -114,6 +122,8 @@ func processResvOK(moduleName string, matchVersion int, reservation common.Match
 	group.players[destination] = true
 	destination.groupPointer = group
 	destination.GroupName = group.GroupName
+
+	logging.Info(moduleName, "Group", aurora.Cyan(group.GroupName), "now has", aurora.BrightGreen(len(group.players)), "players")
 
 	return true
 }
@@ -582,4 +592,15 @@ func loadGroups() error {
 	}
 
 	return nil
+}
+
+func shutdownMKWServerServers() {
+	for _, g := range groups {
+		if g.mkwServerProxy != nil {
+			if g.mkwServerProxy.Cmd != nil && g.mkwServerProxy.Cmd.Process != nil {
+				logging.Info("QR2", "Shutting down mkw-server process for group", aurora.Cyan(g.GroupName))
+				g.mkwServerProxy.Cmd.Process.Kill()
+			}
+		}
+	}
 }

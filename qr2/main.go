@@ -23,14 +23,16 @@ const (
 	KeepAliveRequest        = 0x08
 	AvailableRequest        = 0x09
 	ClientRegisteredReply   = 0x0A
+	MKWServerClientHandler  = 0x0C
 
 	ClientExploitReply = 0x10
 )
 
 var (
-	masterConn net.PacketConn
-	inShutdown = false
-	waitGroup  = sync.WaitGroup{}
+	masterConn        net.PacketConn
+	mkwServerListener net.Listener
+	inShutdown        = false
+	waitGroup         = sync.WaitGroup{}
 )
 
 func StartServer(reload bool) {
@@ -44,6 +46,17 @@ func StartServer(reload bool) {
 	}
 
 	masterConn = conn
+
+	mkwServerListenerPort := "31000"
+	listener, err := net.Listen("tcp", "127.0.0.1:"+mkwServerListenerPort)
+	if err != nil {
+		panic(err)
+	}
+
+	logging.Notice("QR2", "mkw-server listening on", aurora.BrightCyan(*config.GameSpyAddress+":"+mkwServerListenerPort))
+
+	mkwServerListener = listener
+
 	inShutdown = false
 
 	if reload {
@@ -71,6 +84,8 @@ func StartServer(reload bool) {
 
 	waitGroup.Add(1)
 
+	go acceptMKWServerMessages()
+
 	go func() {
 		defer waitGroup.Done()
 
@@ -84,8 +99,8 @@ func StartServer(reload bool) {
 			}
 
 			buf := make([]byte, 1024)
-			n, addr, err := conn.ReadFrom(buf)
-			if err != nil || n == 0 {
+			size, addr, err := conn.ReadFrom(buf)
+			if err != nil || size == 0 {
 				continue
 			}
 
@@ -103,6 +118,8 @@ func Shutdown() {
 
 	mutex.Lock()
 	defer mutex.Unlock()
+
+	shutdownMKWServerServers()
 
 	err := saveSessions()
 	if err != nil {
@@ -150,6 +167,7 @@ func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
 	}
 
 	switch packetType {
+
 	case QueryRequest:
 		logging.Info(moduleName, "Command:", aurora.Yellow("QUERY"))
 
@@ -220,8 +238,41 @@ func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
 			login.NeedsExploit = false
 		}
 
+	case MKWServerClientHandler:
+		logging.Info(moduleName, "Command:", aurora.Yellow(" MKWServerClientHandler"))
+
+		sessionAddr := makeLookupAddr(addr.String())
+		session, exists := sessions[sessionAddr]
+		if !exists {
+			logging.Error(moduleName, "No session found for MKW Server Manager packet")
+			return
+		}
+
+		group := session.groupPointer
+		if group == nil {
+			logging.Error(moduleName, "Session does not belong to a group")
+			return
+		}
+
+		playerRequestType := buffer[1]
+
+		mkwServerProxy := group.mkwServerProxy
+		if mkwServerProxy == nil {
+			logging.Error(moduleName, "Group does not have a MKWServerProxy")
+			return
+		}
+
+		switch playerRequestType {
+		case ServerJoinFroomRequest:
+			mkwServerProxy.handlePlayerJoinFroomRequest(session, buffer)
+
+		default:
+			logging.Warn(moduleName, "Unknown MKW Server Client Handler request type:", aurora.Yellow(playerRequestType))
+		}
+
 	default:
 		logging.Error(moduleName, "Unknown command:", aurora.Yellow(buffer[0]))
+
 		return
 	}
 }

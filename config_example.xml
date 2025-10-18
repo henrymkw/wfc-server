@@ -67,4 +67,7 @@
 
     <!-- API secret -->
     <apiSecret>hQ3f57b3tW2WnjJH3v</apiSecret>
+    
+    <!-- Path to the Mario Kart Wii - Server executable -->
+    <mkwServerPath>/mkw</mkwServerPath>
 </Config>
