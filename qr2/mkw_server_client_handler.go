@@ -68,7 +68,7 @@ func (mkwServerProxy *MKWServerProxy) handlePlayerJoinFroomRequest(session *Sess
 	logging.Info(moduleName, "Client (", session.Addr.String(), ") ", "requested to join a room")
 
 	// client sends over {0xc, 0x2}, anything else is invalid
-	if len(buffer) != 2 {
+	if len(buffer) < 2 || buffer[0] != 0xc || buffer[1] != 0x2 {
 		logging.Error(moduleName, "Invalid JOIN_FROOM request length")
 		return
 	}
