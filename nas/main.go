@@ -138,9 +138,9 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check for /api/groups
-	if r.URL.Path == "/api/groups" {
-		api.HandleGroups(w, r)
+	// Check for /api/rooms
+	if r.URL.Path == "/api/rooms" {
+		api.HandleRooms(w, r)
 		return
 	}
 

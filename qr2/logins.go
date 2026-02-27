@@ -16,7 +16,7 @@ type LoginInfo struct {
 	NeedsExploit        bool
 	DeviceAuthenticated bool
 	Restricted          bool
-	session             *Session
+	player             *Player
 }
 
 var logins = map[uint32]*LoginInfo{}
@@ -35,7 +35,7 @@ func Login(profileID uint32, gameCode string, inGameName string, consoleFriendCo
 		NeedsExploit:        needsExploit,
 		DeviceAuthenticated: deviceAuthenticated,
 		Restricted:          restricted,
-		session:             nil,
+		player:             nil,
 	}
 }
 
@@ -45,8 +45,8 @@ func SetDeviceAuthenticated(profileID uint32) {
 
 	if login, exists := logins[profileID]; exists {
 		login.DeviceAuthenticated = true
-		if login.session != nil {
-			login.session.Data["+deviceauth"] = "1"
+		if login.player != nil {
+			login.player.Data["+deviceauth"] = "1"
 		}
 	}
 }
@@ -55,10 +55,10 @@ func Logout(profileID uint32) {
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	// Delete login's session
+	// Delete login's player
 	if login, exists := logins[profileID]; exists {
-		if login.session != nil {
-			removeSession(makeLookupAddr(login.session.Addr.String()))
+		if login.player != nil {
+			removePlayer(makeLookupAddr(login.player.Addr.String()))
 		}
 	}
 
@@ -78,7 +78,7 @@ func saveLogins() error {
 	return err
 }
 
-// Load logins from a file. Expects the mutex to be locked, and the sessions to already be loaded.
+// Load logins from a file. Expects the mutex to be locked, and the players to already be loaded.
 func loadLogins() error {
 	file, err := os.Open("state/qr2_logins.gob")
 	if err != nil {
@@ -92,8 +92,8 @@ func loadLogins() error {
 		return err
 	}
 
-	for _, session := range sessions {
-		dwcPid := session.Data["dwc_pid"]
+	for _, player := range players {
+		dwcPid := player.Data["dwc_pid"]
 		if dwcPid == "" {
 			continue
 		}
@@ -104,8 +104,8 @@ func loadLogins() error {
 		}
 
 		if login, exists := logins[uint32(profileID)]; exists {
-			login.session = session
-			session.login = login
+			login.player = player
+			player.login = login
 		}
 	}
 

@@ -3,12 +3,12 @@ package gpcm
 import (
 	"encoding/binary"
 	"encoding/hex"
-	"fmt"
+	// "fmt"
 	"strconv"
 	"strings"
 	"wwfc/common"
 	"wwfc/logging"
-	"wwfc/qr2"
+	// "wwfc/qr2"
 
 	"github.com/logrusorgru/aurora/v3"
 )
@@ -162,19 +162,12 @@ func (g *GameSpySession) bestieMessage(command common.GameSpyCommand) {
 		return
 	}
 
-	if cmd == common.MatchReservation {
-		g.QR2IP = uint64(msgMatchData.Reservation.PublicIP) | (uint64(msgMatchData.Reservation.PublicPort) << 32)
-	} else if cmd == common.MatchResvOK {
-		g.QR2IP = uint64(msgMatchData.ResvOK.PublicIP) | (uint64(msgMatchData.ResvOK.PublicPort) << 32)
-	}
-
 	mutex.Lock()
 	defer mutex.Unlock()
 
 	var toSession *GameSpySession
 	if toSession, ok = sessions[uint32(toProfileId)]; !ok || !toSession.LoggedIn {
 		logging.Error(g.ModuleName, "Destination", aurora.Cyan(toProfileId), "is not online")
-		// g.replyError(ErrMessageFriendOffline)
 		sendMessageToSessionBuffer("1", uint32(toProfileId), g, resvDenyMsg)
 		return
 	}
@@ -189,92 +182,6 @@ func (g *GameSpySession) bestieMessage(command common.GameSpyCommand) {
 		logging.Error(g.ModuleName, "Destination", aurora.Cyan(toProfileId), "is not device authenticated")
 		sendMessageToSessionBuffer("1", uint32(toProfileId), g, resvDenyMsg)
 		return
-	}
-
-	sameAddress := strings.Split(g.RemoteAddr, ":")[0] == strings.Split(toSession.RemoteAddr, ":")[0]
-
-	if cmd == common.MatchReservation {
-		if g.QR2IP == 0 {
-			logging.Error(g.ModuleName, "Missing QR2 IP")
-			g.replyError(ErrMessage)
-			return
-		}
-
-		if g.User.Restricted || toSession.User.Restricted {
-			// Check with QR2 if the room is public or private
-			resvError := qr2.CheckGPReservationAllowed(g.QR2IP, g.User.ProfileId, uint32(toProfileId), msgMatchData.Reservation.MatchType)
-			if resvError != "ok" {
-				if resvError == "restricted" || resvError == "restricted_join" {
-					logging.Error(g.ModuleName, "RESERVATION: Restricted user tried to connect to public room")
-
-					// Kick the player(s)
-					if g.User.Restricted {
-						kickPlayer(toSession.User.ProfileId, resvError)
-					}
-					if toSession.User.Restricted {
-						kickPlayer(g.User.ProfileId, resvError)
-					}
-				}
-
-				logging.Warn(g.ModuleName, "RESERVATION: Not allowed:", resvError)
-				// Otherwise generic error?
-				return
-			}
-		}
-
-		if !sameAddress {
-			searchId := qr2.GetSearchID(g.QR2IP)
-			msgMatchData.Reservation.PublicIP = uint32(searchId & 0xffffffff)
-			msgMatchData.Reservation.PublicPort = uint16(searchId >> 32)
-			msgMatchData.Reservation.LocalIP = 0
-			msgMatchData.Reservation.LocalPort = 0
-		}
-	} else if cmd == common.MatchResvOK || cmd == common.MatchResvDeny || cmd == common.MatchResvWait {
-		if toSession.ReservationPID != g.User.ProfileId || toSession.Reservation.Reservation == nil {
-			logging.Error(g.ModuleName, "Destination", aurora.Cyan(toProfileId), "has no reservation with the sender")
-			// Allow the message through anyway to avoid a room deadlock
-		}
-
-		if toSession.Reservation.Version != msgMatchData.Version {
-			logging.Error(g.ModuleName, "Reservation version mismatch")
-			g.replyError(ErrMessage)
-			return
-		}
-
-		if cmd == common.MatchResvOK {
-			if g.QR2IP == 0 || toSession.QR2IP == 0 {
-				logging.Error(g.ModuleName, "Missing QR2 IP")
-				g.replyError(ErrMessage)
-				return
-			}
-
-			if !qr2.ProcessGPResvOK(msgMatchData.Version, *toSession.Reservation.Reservation, *msgMatchData.ResvOK, g.QR2IP, g.User.ProfileId, toSession.QR2IP, uint32(toProfileId)) {
-				g.replyError(ErrMessage)
-				return
-			}
-
-			if !sameAddress {
-				searchId := qr2.GetSearchID(g.QR2IP)
-				if searchId == 0 {
-					logging.Error(g.ModuleName, "Could not get QR2 search ID for IP", aurora.Cyan(fmt.Sprintf("%016x", g.QR2IP)))
-					g.replyError(ErrMessage)
-					return
-				}
-
-				msgMatchData.ResvOK.PublicIP = uint32(searchId & 0xffffffff)
-				msgMatchData.ResvOK.PublicPort = uint16(searchId >> 32)
-			}
-		} else if toSession.ReservationPID == g.User.ProfileId {
-			toSession.ReservationPID = 0
-		}
-	} else if cmd == common.MatchTellAddr {
-		if g.QR2IP == 0 || toSession.QR2IP == 0 {
-			logging.Error(g.ModuleName, "Missing QR2 IP")
-			g.replyError(ErrMessage)
-			return
-		}
-
-		qr2.ProcessGPTellAddr(g.User.ProfileId, g.QR2IP, toSession.User.ProfileId, toSession.QR2IP)
 	}
 
 	newMsg, ok := common.EncodeMatchCommand(cmd, msgMatchData)

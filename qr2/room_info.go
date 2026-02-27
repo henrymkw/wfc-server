@@ -27,9 +27,8 @@ type PlayerInfo struct {
 	Mii        []MiiInfo `json:"mii,omitempty"`
 }
 
-type GroupInfo struct {
-	GroupName   string    `json:"id"`
-	GameName    string    `json:"game"`
+type RoomInfo struct {
+	RoomName   string    `json:"id"`
 	CreateTime  time.Time `json:"created"`
 	MatchType   string    `json:"type"`
 	Suspend     bool      `json:"suspend"`
@@ -49,25 +48,16 @@ type RaceInfo struct {
 	EngineClassID int `json:"cc"`
 }
 
-func getGroupsRaw(gameNames []string, groupNames []string) []GroupInfo {
-	var groupsCopy []GroupInfo
+func getRoomsRaw(gameNames []string, roomNames []string) []RoomInfo {
+	var roomsCopy []RoomInfo
 
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	for _, group := range groups {
-		if len(gameNames) > 0 && !common.StringInSlice(group.GameName, gameNames) {
-			continue
-		}
-
-		if len(groupNames) > 0 && !common.StringInSlice(group.GroupName, groupNames) {
-			continue
-		}
-
-		groupInfo := GroupInfo{
-			GroupName:       group.GroupName,
-			GameName:        group.GameName,
-			CreateTime:      group.CreateTime,
+	for _, room := range rooms {
+		roomInfo := RoomInfo{
+			RoomName:       room.roomName,
+			CreateTime:      room.CreateTime,
 			MatchType:       "",
 			Suspend:         true,
 			ServerIndex:     "",
@@ -77,53 +67,45 @@ func getGroupsRaw(gameNames []string, groupNames []string) []GroupInfo {
 			SortedJoinIndex: []string{},
 		}
 
-		if group.MatchType == "0" || group.MatchType == "1" {
-			groupInfo.MatchType = "anybody"
-		} else if group.MatchType == "2" || group.MatchType == "3" {
-			groupInfo.MatchType = "private"
+		if room.IsPrivateRoom {
+			roomInfo.MatchType = "private"
 		} else {
-			groupInfo.MatchType = "unknown"
-		}
+			roomInfo.MatchType = "anybody"
+		} 
 
-		if group.server != nil {
-			groupInfo.ServerIndex = group.server.Data["+joinindex"]
-		}
+		roomInfo.MKWRegion = room.MKWRegion
 
-		if groupInfo.GameName == "mariokartwii" {
-			groupInfo.MKWRegion = group.MKWRegion
-
-			if group.MKWRaceNumber != 0 {
-				groupInfo.RaceInfo = &RaceInfo{
-					RaceNumber:    group.MKWRaceNumber,
-					CourseID:      group.MKWCourseID,
-					EngineClassID: group.MKWEngineClassID,
-				}
+		if room.MKWRaceNumber != 0 {
+			roomInfo.RaceInfo = &RaceInfo{
+				RaceNumber:    room.MKWRaceNumber,
+				CourseID:      room.MKWCourseID,
+				EngineClassID: room.MKWEngineClassID,
 			}
 		}
 
-		for session := range group.players {
+		for player := range room.players {
 			mapData := map[string]string{}
-			for k, v := range session.Data {
+			for k, v := range player.Data {
 				mapData[k] = v
 			}
 
-			if login := session.login; login != nil {
+			if login := player.login; login != nil {
 				mapData["+ingamesn"] = login.InGameName
 			} else {
 				mapData["+ingamesn"] = ""
 			}
 
-			groupInfo.PlayersRaw[mapData["+joinindex"]] = mapData
+			roomInfo.PlayersRaw[mapData["+joinindex"]] = mapData
 
 			if mapData["dwc_hoststate"] == "2" && mapData["dwc_suspend"] == "0" {
-				groupInfo.Suspend = false
+				roomInfo.Suspend = false
 			}
 
 			// Add the join index to the sorted list
 			myJoinIndex, _ := strconv.Atoi(mapData["+joinindex"])
 			added := false
 
-			for i, joinIndex := range groupInfo.SortedJoinIndex {
+			for i, joinIndex := range roomInfo.SortedJoinIndex {
 				if joinIndex == mapData["+joinindex"] {
 					added = true
 					break
@@ -131,31 +113,31 @@ func getGroupsRaw(gameNames []string, groupNames []string) []GroupInfo {
 
 				intJoinIndex, _ := strconv.Atoi(joinIndex)
 				if intJoinIndex > myJoinIndex {
-					groupInfo.SortedJoinIndex = append(groupInfo.SortedJoinIndex, "")
-					copy(groupInfo.SortedJoinIndex[i+1:], groupInfo.SortedJoinIndex[i:])
-					groupInfo.SortedJoinIndex[i] = mapData["+joinindex"]
+					roomInfo.SortedJoinIndex = append(roomInfo.SortedJoinIndex, "")
+					copy(roomInfo.SortedJoinIndex[i+1:], roomInfo.SortedJoinIndex[i:])
+					roomInfo.SortedJoinIndex[i] = mapData["+joinindex"]
 					added = true
 					break
 				}
 			}
 
 			if !added {
-				groupInfo.SortedJoinIndex = append(groupInfo.SortedJoinIndex, mapData["+joinindex"])
+				roomInfo.SortedJoinIndex = append(roomInfo.SortedJoinIndex, mapData["+joinindex"])
 			}
 		}
 
-		groupsCopy = append(groupsCopy, groupInfo)
+		roomsCopy = append(roomsCopy, roomInfo)
 	}
 
-	return groupsCopy
+	return roomsCopy
 }
 
-// GetGroups returns a copy of all online rooms
-func GetGroups(gameNames []string, groupNames []string, sorted bool) []GroupInfo {
-	groupsCopy := getGroupsRaw(gameNames, groupNames)
+// GetRooms returns a copy of all online rooms
+func GetRooms(gameNames []string, roomNames []string, sorted bool) []RoomInfo {
+	roomsCopy := getRoomsRaw(gameNames, roomNames)
 
-	for i, group := range groupsCopy {
-		for joinIndex, rawPlayer := range group.PlayersRaw {
+	for i, room := range roomsCopy {
+		for joinIndex, rawPlayer := range room.PlayersRaw {
 			playerInfo := PlayerInfo{
 				Count:      rawPlayer["+localplayers"],
 				ProfileID:  rawPlayer["dwc_pid"],
@@ -186,7 +168,7 @@ func GetGroups(gameNames []string, groupNames []string, sorted bool) []GroupInfo
 				})
 			}
 
-			for _, newIndex := range group.SortedJoinIndex {
+			for _, newIndex := range room.SortedJoinIndex {
 				if newIndex == joinIndex {
 					continue
 				}
@@ -206,19 +188,19 @@ func GetGroups(gameNames []string, groupNames []string, sorted bool) []GroupInfo
 
 			playerInfo.Suspend = rawPlayer["dwc_suspend"]
 
-			groupsCopy[i].Players[joinIndex] = playerInfo
+			roomsCopy[i].Players[joinIndex] = playerInfo
 		}
 	}
 
 	if sorted {
-		sort.Slice(groupsCopy, func(i, j int) bool {
-			if groupsCopy[i].CreateTime.Equal(groupsCopy[j].CreateTime) {
-				return groupsCopy[i].GroupName < groupsCopy[j].GroupName
+		sort.Slice(roomsCopy, func(i, j int) bool {
+			if roomsCopy[i].CreateTime.Equal(roomsCopy[j].CreateTime) {
+				return roomsCopy[i].RoomName < roomsCopy[j].RoomName
 			}
 
-			return groupsCopy[i].CreateTime.Before(groupsCopy[j].CreateTime)
+			return roomsCopy[i].CreateTime.Before(roomsCopy[j].CreateTime)
 		})
 	}
 
-	return groupsCopy
+	return roomsCopy
 }

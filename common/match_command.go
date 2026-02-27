@@ -77,7 +77,7 @@ type MatchCommandDataResvOK struct {
 	LocalPort        uint16
 	Unknown          uint32
 	LocalPlayerCount uint32
-	GroupID          uint32
+	RoomID 		     uint32
 	ReceiverNewAID   uint32
 	ClientCount      uint32
 	ResvCheckValue   uint32
@@ -338,7 +338,7 @@ func DecodeMatchCommand(command byte, buffer []byte, version int) (MatchCommandD
 						SenderAID:   binary.LittleEndian.Uint32(buffer[index+0x0C : index+0x10]),
 						PublicIP:    binary.BigEndian.Uint32(buffer[index : index+0x04]),
 						PublicPort:  uint16(publicPort),
-						GroupID:     binary.LittleEndian.Uint32(buffer[index+0x10 : index+0x14]),
+						RoomID:      binary.LittleEndian.Uint32(buffer[index+0x10 : index+0x14]),
 						ClientCount: clientCount,
 						ProfileIDs:  profileIDs,
 						IsFriend:    isFriend,
@@ -380,7 +380,7 @@ func DecodeMatchCommand(command byte, buffer []byte, version int) (MatchCommandD
 				LocalPort:        uint16(localPort),
 				Unknown:          binary.LittleEndian.Uint32(buffer[0x1C:0x20]),
 				LocalPlayerCount: binary.LittleEndian.Uint32(buffer[0x20:0x24]),
-				GroupID:          binary.LittleEndian.Uint32(buffer[0x24:0x28]),
+				RoomID:          binary.LittleEndian.Uint32(buffer[0x24:0x28]),
 				ReceiverNewAID:   binary.LittleEndian.Uint32(buffer[0x28:0x2C]),
 				ClientCount:      binary.LittleEndian.Uint32(buffer[0x2C:0x30]),
 				ResvCheckValue:   binary.LittleEndian.Uint32(buffer[0x30:0x34]),
@@ -619,7 +619,7 @@ func EncodeMatchCommand(command byte, data MatchCommandData) ([]byte, bool) {
 			message = binary.LittleEndian.AppendUint32(message, isFriendInt)
 
 			message = binary.LittleEndian.AppendUint32(message, data.ResvOK.SenderAID)
-			message = binary.LittleEndian.AppendUint32(message, data.ResvOK.GroupID)
+			message = binary.LittleEndian.AppendUint32(message, data.ResvOK.RoomID)
 			message = binary.LittleEndian.AppendUint32(message, data.ResvOK.MaxPlayers)
 
 			message = append(message, data.ResvOK.UserData...)
@@ -640,7 +640,7 @@ func EncodeMatchCommand(command byte, data MatchCommandData) ([]byte, bool) {
 		message = binary.LittleEndian.AppendUint32(message, uint32(data.ResvOK.LocalPort))
 		message = binary.LittleEndian.AppendUint32(message, data.ResvOK.Unknown)
 		message = binary.LittleEndian.AppendUint32(message, data.ResvOK.LocalPlayerCount)
-		message = binary.LittleEndian.AppendUint32(message, data.ResvOK.GroupID)
+		message = binary.LittleEndian.AppendUint32(message, data.ResvOK.RoomID)
 		message = binary.LittleEndian.AppendUint32(message, data.ResvOK.ReceiverNewAID)
 		message = binary.LittleEndian.AppendUint32(message, data.ResvOK.ClientCount)
 		message = binary.LittleEndian.AppendUint32(message, data.ResvOK.ResvCheckValue)
@@ -713,7 +713,7 @@ func LogMatchCommand(moduleName string, dest string, command byte, data MatchCom
 		logging.Info(moduleName, "Match type:", aurora.Cyan(fmt.Sprintf("0x%02X", data.Reservation.MatchType)))
 		logging.Info(moduleName, "Local player count:", aurora.Cyan(data.Reservation.LocalPlayerCount))
 	} else if command == MatchResvOK && data.ResvOK != nil {
-		logging.Info(moduleName, "Group ID:", aurora.Cyan(data.ResvOK.GroupID))
+		logging.Info(moduleName, "Room ID:", aurora.Cyan(data.ResvOK.RoomID))
 		logging.Info(moduleName, "Local player count:", aurora.Cyan(data.ResvOK.LocalPlayerCount))
 		logging.Info(moduleName, "Current client count:", aurora.Cyan(data.ResvOK.ClientCount))
 		logging.Info(moduleName, "Max client count:", aurora.Cyan(data.ResvOK.MaxPlayers))

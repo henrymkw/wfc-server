@@ -17,10 +17,10 @@ type MKWServerProxy struct {
 	isRemote        bool         // TODO: Unused for now
 	roomAddr        *net.UDPAddr // the udp address of the mkw server (clients send/receive here)
 	connToMKWServer net.Conn     // connection to the mkw server's WFC listener
-	GroupPointer    *Group
+	roomPointer    *Room
 }
 
-// key is the room address, easy for clients/groups to lookup
+// key is the room address, easy for clients/rooms to lookup
 var mkwServerProxies = map[string]*MKWServerProxy{}
 
 const (

@@ -10,7 +10,7 @@ import (
 
 const moduleName = "QR2 (MKW-Server Client Handler)"
 
-func newMKWServerProxy(g *Group) *MKWServerProxy {
+func newMKWServerProxy(r *Room) *MKWServerProxy {
 	// localhost if mkw-server is to spawn on the same machine, more logic would need to be added for remote mkw-server servers
 
 	// for now just use the gamespy address
@@ -53,7 +53,7 @@ func newMKWServerProxy(g *Group) *MKWServerProxy {
 		isRemote:        false,
 		roomAddr:        nil, // set later by ROOM_OPEN message
 		connToMKWServer: nil, // set later by ROOM_OPEN message
-		GroupPointer:    g,
+		roomPointer:    r,
 	}
 
 	mkwServerProxies[roomAddress] = mkwServer
@@ -64,8 +64,8 @@ func newMKWServerProxy(g *Group) *MKWServerProxy {
 }
 
 // this will tell mkw-server to update its state since a player joined. it will send back the address players can connect to.
-func (mkwServerProxy *MKWServerProxy) handlePlayerJoinFroomRequest(session *Session, buffer []byte) {
-	logging.Info(moduleName, "Client (", session.Addr.String(), ") ", "requested to join a room")
+func (mkwServerProxy *MKWServerProxy) handlePlayerJoinFroomRequest(player *Player, buffer []byte) {
+	logging.Info(moduleName, "Client (", player.Addr.String(), ") ", "requested to join a room")
 
 	// client sends over {0xc, 0x2}, anything else is invalid
 	if len(buffer) < 2 || buffer[0] != 0xc || buffer[1] != 0x2 {
@@ -84,19 +84,19 @@ func (mkwServerProxy *MKWServerProxy) handlePlayerJoinFroomRequest(session *Sess
 	message = append(message, 0x0)
 	message = append(message, 0x0)
 	message = append(message, 0x0)
-	message = append(message, session.Addr.String()...)
+	message = append(message, player.Addr.String()...)
 
 	mkwServerProxy.connToMKWServer.Write(message)
 }
 
-func (mkwServerProxy *MKWServerProxy) sendMkwServerRemoveClient(session *Session) {
+func (mkwServerProxy *MKWServerProxy) sendMkwServerRemoveClient(player *Player) {
 	if mkwServerProxy.connToMKWServer == nil {
 		logging.Error(moduleName, "MkwServerInfo.WfcMkwServerConn is nil. Cannot send remove client message")
 		return
 	}
 
-	if session == nil {
-		logging.Error(moduleName, "Session is nil. Cannot send remove client message")
+	if player == nil {
+		logging.Error(moduleName, "player is nil. Cannot send remove client message")
 		return
 	}
 
@@ -106,7 +106,7 @@ func (mkwServerProxy *MKWServerProxy) sendMkwServerRemoveClient(session *Session
 	message = append(message, 0x0)
 	message = append(message, 0x0)
 	message = append(message, 0x0)
-	message = append(message, session.Addr.String()...)
+	message = append(message, player.Addr.String()...)
 
 	mkwServerProxy.connToMKWServer.Write(message)
 }

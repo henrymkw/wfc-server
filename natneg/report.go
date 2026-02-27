@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"wwfc/logging"
-	"wwfc/qr2"
 
 	"github.com/logrusorgru/aurora/v3"
 )
@@ -40,7 +39,6 @@ func (session *NATNEGSession) handleReport(conn net.PacketConn, addr net.Addr, b
 			if otherResult != 1 {
 				result = otherResult
 			}
-			qr2.ProcessNATNEGReport(result, client.ServerIP, connecting.ServerIP)
 		}
 	}
 

@@ -9,8 +9,8 @@ import (
 	"wwfc/common"
 )
 
-func sendChallenge(conn net.PacketConn, addr net.UDPAddr, session Session, lookupAddr uint64) {
-	challenge := session.Challenge
+func sendChallenge(conn net.PacketConn, addr net.UDPAddr, player Player, lookupAddr uint64) {
+	challenge := player.Challenge
 	if challenge == "" {
 		// Generate challenge
 		addrString := strings.Split(addr.String(), ":")
@@ -33,8 +33,8 @@ func sendChallenge(conn net.PacketConn, addr net.UDPAddr, session Session, looku
 
 		challenge = common.RandomString(6) + "00" + hexIP + hexPort
 		mutex.Lock()
-		if sessionPtr := sessions[lookupAddr]; sessionPtr != nil {
-			sessionPtr.Challenge = challenge
+		if playerPtr := players[lookupAddr]; playerPtr != nil {
+			playerPtr.Challenge = challenge
 		} else {
 			mutex.Unlock()
 			return
@@ -42,7 +42,7 @@ func sendChallenge(conn net.PacketConn, addr net.UDPAddr, session Session, looku
 		mutex.Unlock()
 	}
 
-	response := createResponseHeader(ChallengeRequest, session.SessionID)
+	response := createResponseHeader(ChallengeRequest, player.PlayerID)
 	response = append(response, []byte(challenge)...)
 	response = append(response, 0)
 
@@ -53,12 +53,12 @@ func sendChallenge(conn net.PacketConn, addr net.UDPAddr, session Session, looku
 			time.Sleep(1 * time.Second)
 
 			mutex.Lock()
-			session, ok := sessions[lookupAddr]
-			if !ok || session.Authenticated || session.LastKeepAlive < time.Now().UTC().Unix()-60 {
+			player, ok := players[lookupAddr]
+			if !ok || player.Authenticated || player.LastKeepAlive < time.Now().UTC().Unix()-60 {
 				mutex.Unlock()
 				return
 			}
-			addr = session.Addr
+			addr = player.Addr
 			mutex.Unlock()
 		}
 	}()

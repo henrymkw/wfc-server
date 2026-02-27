@@ -86,21 +86,21 @@ func handleMessageFromMKWServer(conn net.Conn, msg []byte) {
 		// The message we get back from mkw-server is "NEW_PLAYER {clientIp:clientPort} {mkwserverIp:mkwserverPort}"
 		// We need to split parts[1] to get the client ip/port so we can send them the mkw-server address
 		playerAddr := parts[1]
-		session := sessions[makeLookupAddr(playerAddr)]
-		if session == nil {
-			logging.Error("MKW-Server Manager", "No session found for player address:", playerAddr)
+		player := players[makeLookupAddr(playerAddr)]
+		if player == nil {
+			logging.Error("MKW-Server Manager", "No player found for player address:", playerAddr)
 			return
 		}
 
-		if session.groupPointer == nil {
-			logging.Error("MKW-Server Manager", "Session has no groupPointer for player address:", playerAddr)
+		if player.roomPointer == nil {
+			logging.Error("MKW-Server Manager", "player has no roomPointer for player address:", playerAddr)
 			return
 		}
 
 		// the mkwServerProxy should have all its fields set by now
-		mkwServerProxy := session.groupPointer.mkwServerProxy
+		mkwServerProxy := player.roomPointer.mkwServerProxy
 		if mkwServerProxy == nil {
-			logging.Error("MKW-Server Manager", "No MKWServerProxy found for session's group")
+			logging.Error("MKW-Server Manager", "No MKWServerProxy found for player's room")
 			return
 		}
 
@@ -147,8 +147,8 @@ func handleMessageFromMKWServer(conn net.Conn, msg []byte) {
 		logging.Info("MKW-Server Manager", "Constructed message to send to client:", message)
 
 		// send to the client
-		masterConn.WriteTo([]byte(message), &session.Addr)
-		logging.Info("MKW-Server Manager", "Sent MKW-Server address to client at", session.Addr.String())
+		masterConn.WriteTo([]byte(message), &player.Addr)
+		logging.Info("MKW-Server Manager", "Sent MKW-Server address to client at", player.Addr.String())
 
 	case "MKWSERVER_SHUTDOWN":
 		logging.Info("MKW-Server Manager", "Handling MKWServer_SHUTDOWN for", parts[1])
