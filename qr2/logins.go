@@ -4,6 +4,8 @@ import (
 	"encoding/gob"
 	"os"
 	"strconv"
+
+	"wwfc/common"
 )
 
 type LoginInfo struct {
@@ -16,7 +18,7 @@ type LoginInfo struct {
 	NeedsExploit        bool
 	DeviceAuthenticated bool
 	Restricted          bool
-	player             *Player
+	player              *Player
 }
 
 var logins = map[uint32]*LoginInfo{}
@@ -35,7 +37,7 @@ func Login(profileID uint32, gameCode string, inGameName string, consoleFriendCo
 		NeedsExploit:        needsExploit,
 		DeviceAuthenticated: deviceAuthenticated,
 		Restricted:          restricted,
-		player:             nil,
+		player:              nil,
 	}
 }
 
@@ -58,7 +60,7 @@ func Logout(profileID uint32) {
 	// Delete login's player
 	if login, exists := logins[profileID]; exists {
 		if login.player != nil {
-			removePlayer(makeLookupAddr(login.player.Addr.String()))
+			removePlayer(common.MakeLoopupAddr(login.player.Addr.String()))
 		}
 	}
 

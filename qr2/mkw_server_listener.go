@@ -4,6 +4,8 @@ import (
 	"net"
 	"strconv"
 	"strings"
+
+	"wwfc/common"
 	"wwfc/logging"
 )
 
@@ -86,7 +88,7 @@ func handleMessageFromMKWServer(conn net.Conn, msg []byte) {
 		// The message we get back from mkw-server is "NEW_PLAYER {clientIp:clientPort} {mkwserverIp:mkwserverPort}"
 		// We need to split parts[1] to get the client ip/port so we can send them the mkw-server address
 		playerAddr := parts[1]
-		player := players[makeLookupAddr(playerAddr)]
+		player := players[common.MakeLoopupAddr(playerAddr)]
 		if player == nil {
 			logging.Error("MKW-Server Manager", "No player found for player address:", playerAddr)
 			return

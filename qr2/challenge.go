@@ -42,7 +42,7 @@ func sendChallenge(conn net.PacketConn, addr net.UDPAddr, player Player, lookupA
 		mutex.Unlock()
 	}
 
-	response := createResponseHeader(ChallengeRequest, player.PlayerID)
+	response := createResponseHeader(ChallengeRequest, player.PlayerId)
 	response = append(response, []byte(challenge)...)
 	response = append(response, 0)
 

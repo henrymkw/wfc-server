@@ -65,7 +65,7 @@ func heartbeat(moduleName string, conn net.PacketConn, addr net.UDPAddr, buffer 
 	payload["publicip"] = realIP
 	payload["publicport"] = realPort
 
-	lookupAddr := makeLookupAddr(addr.String())
+	lookupAddr := common.MakeLoopupAddr(addr.String())
 
 	statechanged, ok := payload["statechanged"]
 	if ok && statechanged == "2" {
@@ -123,6 +123,11 @@ func heartbeat(moduleName string, conn net.PacketConn, addr net.UDPAddr, buffer 
 			logging.Notice(moduleName, "Sending SBCM exploit to DNS patcher client")
 			sendClientExploit(moduleName, player)
 		}
+	}
+
+	// try to send the player their search id
+	if player.SearchId != 0 && !player.recvSearchId && player.searchIdGuesses < 5 {
+		sendPlayerSearchId(&player)
 	}
 
 }

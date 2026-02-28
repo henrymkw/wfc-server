@@ -106,7 +106,8 @@ func StartServer(reload bool) {
 
 			waitGroup.Add(1)
 
-			go handleConnection(conn, *addr.(*net.UDPAddr), buf)
+			// changing to buf[:size] will NEED to be tested
+			go handleConnection(conn, *addr.(*net.UDPAddr), buf[:size])
 		}
 	}()
 }
@@ -146,6 +147,12 @@ func Shutdown() {
 func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
 	defer waitGroup.Done()
 
+	// this doesn't really fit the packetType switch pattern bellow, so this call
+	// is kinda awkward.
+	if tryVerifySearchIdPacketReceipt(addr, buffer) {
+		return
+	}
+
 	packetType := buffer[0]
 	moduleName := "QR2:" + addr.String()
 
@@ -154,14 +161,14 @@ func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
 		mutex.Lock()
 
 		var ok bool
-		player, ok = players[makeLookupAddr(addr.String())]
+		player, ok = players[common.MakeLoopupAddr(addr.String())]
 		if !ok {
 			mutex.Unlock()
 			logging.Error(moduleName, "Cannot find player for this IP address")
 			return
 		}
 
-		player.PlayerID = binary.BigEndian.Uint32(buffer[1:5])
+		player.PlayerId = binary.BigEndian.Uint32(buffer[1:5])
 
 		mutex.Unlock()
 	}
@@ -180,7 +187,7 @@ func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
 			player.Authenticated = true
 			mutex.Unlock()
 
-			conn.WriteTo(createResponseHeader(ClientRegisteredReply, player.PlayerID), &addr)
+			conn.WriteTo(createResponseHeader(ClientRegisteredReply, player.PlayerId), &addr)
 		} else {
 			mutex.Unlock()
 		}
@@ -241,7 +248,7 @@ func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
 	case MKWServerClientHandler:
 		logging.Info(moduleName, "Command:", aurora.Yellow(" MKWServerClientHandler"))
 
-		playerAddr := makeLookupAddr(addr.String())
+		playerAddr := common.MakeLoopupAddr(addr.String())
 		player, exists := players[playerAddr]
 		if !exists {
 			logging.Error(moduleName, "No player found for MKW Server Manager packet")

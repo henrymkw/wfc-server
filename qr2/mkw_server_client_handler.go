@@ -53,7 +53,7 @@ func newMKWServerProxy(r *Room) *MKWServerProxy {
 		isRemote:        false,
 		roomAddr:        nil, // set later by ROOM_OPEN message
 		connToMKWServer: nil, // set later by ROOM_OPEN message
-		roomPointer:    r,
+		roomPointer:     r,
 	}
 
 	mkwServerProxies[roomAddress] = mkwServer

@@ -24,30 +24,59 @@ const (
 )
 
 type Player struct {
-	PlayerID       uint32
-	SearchID        uint64
+	PlayerId        uint32
+	SearchId        uint64
 	Addr            net.UDPAddr
 	Challenge       string
 	Authenticated   bool
 	login           *LoginInfo
 	ExploitReceived bool
 	LastKeepAlive   int64
-	Endianness      byte // Some fields depend on the client's endianness
 	Data            map[string]string
 	PacketCount     uint32
-	Reservation     common.MatchCommandData
-	ReservationID   uint64
 	messageMutex    *deadlock.Mutex
 	messageAckWaker *sleep.Waker
-	roomPointer    *Room
-	RoomName       string
+	roomPointer     *Room
+	RoomName        string
+
+	recvSearchId    bool
+	searchIdGuesses uint32 // attempt to prevent brute forcing the searchId
+
+	Aid         uint8 // only set when in a room
+	IsHost      bool  // only set when in a room
+	HasGuest    bool  // set when player has a guest
+	SuspendVote bool  // vote to suspend match making.
+	is2Players  bool
+
+	roomManagerConnnectionIndex         uint64
+	roomManagerAddr                     string // address roommanager sends to
+	numConsecutiveRoomManagerSendErrors uint32
 }
 
 var (
 	players          = map[uint64]*Player{}
 	playerBySearchID = map[uint64]*Player{}
-	mutex             = deadlock.Mutex{}
+	mutex            = deadlock.Mutex{}
 )
+
+func addPlayerToRoom(p *Player, r *Room) bool {
+	// check if the room empty (just started)
+	if r.isEmpty() {
+		r.players[p] = true
+		p.roomPointer = r
+		p.RoomName = r.roomName
+		p.Aid = 0
+		p.IsHost = true
+		p.SuspendVote = false
+		return true
+	} else if r.isFull() {
+		return false
+	} else {
+		// TODO: Add guest to friend room
+		return false
+	}
+
+}
 
 // Remove a player. Expects the global mutex to already be locked.
 func removePlayer(addr uint64) {
@@ -59,7 +88,7 @@ func removePlayer(addr uint64) {
 	player.messageAckWaker.Assert()
 
 	if player.roomPointer != nil {
-		player.removeFromroom()
+		player.removeFromRoom()
 	}
 
 	if player.login != nil {
@@ -68,19 +97,24 @@ func removePlayer(addr uint64) {
 	}
 
 	// Delete search ID lookup
-	delete(playerBySearchID, players[addr].SearchID)
+	delete(playerBySearchID, players[addr].SearchId)
 
 	delete(players, addr)
 }
 
 // Remove player from room. Expects the global mutex to already be locked.
-func (player *Player) removeFromroom() {
+func (player *Player) removeFromRoom() {
 	if player.roomPointer == nil {
 		return
 	}
 
 	room := player.roomPointer
 	delete(room.players, player)
+
+	matchPacket := room.matchPacket
+	if matchPacket != nil {
+		matchPacket.removeAid(player.Aid)
+	}
 
 	if len(room.players) == 0 {
 		logging.Notice("QR2", "Deleting room", aurora.Cyan(room.roomName))
@@ -121,7 +155,7 @@ func setPlayerData(moduleName string, addr net.Addr, playerId uint32, payload ma
 	newPID, newPIDValid := payload["dwc_pid"]
 	delete(payload, "dwc_pid")
 
-	lookupAddr := makeLookupAddr(addr.String())
+	lookupAddr := common.MakeLoopupAddr(addr.String())
 
 	// Moving into performing operations on the player data, so lock the mutex
 	mutex.Lock()
@@ -134,19 +168,19 @@ func setPlayerData(moduleName string, addr net.Addr, playerId uint32, payload ma
 	}
 
 	if !playerExists {
+		logging.Info(moduleName, "creating player in qr2 with addr", addr.String())
 		player = &Player{
-			PlayerID:       playerId,
+			PlayerId:        playerId,
 			Addr:            *addr.(*net.UDPAddr),
 			Challenge:       "",
 			Authenticated:   false,
 			LastKeepAlive:   time.Now().UTC().Unix(),
-			Endianness:      ClientNoEndian,
 			Data:            payload,
 			PacketCount:     0,
-			Reservation:     common.MatchCommandData{},
-			ReservationID:   0,
 			messageMutex:    &deadlock.Mutex{},
 			messageAckWaker: &sleep.Waker{},
+			recvSearchId:    false,
+			searchIdGuesses: 0,
 		}
 	}
 
@@ -161,7 +195,7 @@ func setPlayerData(moduleName string, addr net.Addr, playerId uint32, payload ma
 		for {
 			searchID := uint64(rand.Int63n((1<<24)-1) + 1)
 			if _, exists := playerBySearchID[searchID]; !exists {
-				player.SearchID = searchID
+				player.SearchId = searchID
 				player.Data["+searchid"] = strconv.FormatUint(searchID, 10)
 				playerBySearchID[searchID] = player
 				break
@@ -181,7 +215,7 @@ func setPlayerData(moduleName string, addr net.Addr, playerId uint32, payload ma
 
 	player.Data = payload
 	player.LastKeepAlive = time.Now().UTC().Unix()
-	player.PlayerID = playerId
+	player.PlayerId = playerId
 	return *player, true
 }
 
@@ -236,7 +270,7 @@ func (player *Player) setProfileID(moduleName string, newPID string, gpcmIP stri
 	// Constraint: only one player can exist with a given profile ID
 	if loginInfo.player != nil {
 		logging.Notice(moduleName, "Removing outdated player", aurora.BrightCyan(loginInfo.player.Addr.String()), "with PID", aurora.Cyan(newPID))
-		removePlayer(makeLookupAddr(loginInfo.player.Addr.String()))
+		removePlayer(common.MakeLoopupAddr(loginInfo.player.Addr.String()))
 	}
 
 	loginInfo.player = player
@@ -256,22 +290,17 @@ func (player *Player) setProfileID(moduleName string, newPID string, gpcmIP stri
 	return true
 }
 
-func makeLookupAddr(addr string) uint64 {
-	ip, port := common.IPFormatToInt(addr)
-	return (uint64(port) << 32) | uint64(uint32(ip))
-}
-
 func DoesPlayerExist(addr string) bool {
 	logging.Info("QR2", "Checking player existence for", aurora.Cyan(addr))
 	mutex.Lock()
-	_, playerExists := players[makeLookupAddr(addr)]
+	_, playerExists := players[common.MakeLoopupAddr(addr)]
 	mutex.Unlock()
 	return playerExists
 }
 
 func IsPlayerInRoom(addr string) bool {
 	mutex.Lock()
-	player, _ := players[makeLookupAddr(addr)]
+	player, _ := players[common.MakeLoopupAddr(addr)]
 	mutex.Unlock()
 
 	if player == nil || player.roomPointer == nil {
@@ -320,10 +349,24 @@ func GetSearchID(addr uint64) uint64 {
 	defer mutex.Unlock()
 
 	if player := players[addr]; player != nil {
-		return player.SearchID
+		return player.SearchId
 	}
 
 	return 0
+}
+
+// this assumes validateBasics() has been called
+func canPlayerCreateFriendRoom(player *Player) bool {
+	if player == nil {
+		logging.Info("Room", "Player is nil, cannot create room")
+		return false
+	}
+
+	if player.roomPointer != nil {
+		logging.Info("Room", "Player is already in a room, cannot create room")
+		return false
+	}
+	return true
 }
 
 // Save the players to a file. Expects the mutex to be locked.
@@ -354,8 +397,8 @@ func loadPlayers() error {
 	}
 
 	for _, players := range players {
-		if players.SearchID != 0 {
-			playerBySearchID[players.SearchID] = players
+		if players.SearchId != 0 {
+			playerBySearchID[players.SearchId] = players
 		}
 
 		players.messageMutex = &deadlock.Mutex{}

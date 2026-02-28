@@ -77,7 +77,7 @@ type MatchCommandDataResvOK struct {
 	LocalPort        uint16
 	Unknown          uint32
 	LocalPlayerCount uint32
-	RoomID 		     uint32
+	RoomID           uint32
 	ReceiverNewAID   uint32
 	ClientCount      uint32
 	ResvCheckValue   uint32
@@ -380,7 +380,7 @@ func DecodeMatchCommand(command byte, buffer []byte, version int) (MatchCommandD
 				LocalPort:        uint16(localPort),
 				Unknown:          binary.LittleEndian.Uint32(buffer[0x1C:0x20]),
 				LocalPlayerCount: binary.LittleEndian.Uint32(buffer[0x20:0x24]),
-				RoomID:          binary.LittleEndian.Uint32(buffer[0x24:0x28]),
+				RoomID:           binary.LittleEndian.Uint32(buffer[0x24:0x28]),
 				ReceiverNewAID:   binary.LittleEndian.Uint32(buffer[0x28:0x2C]),
 				ClientCount:      binary.LittleEndian.Uint32(buffer[0x2C:0x30]),
 				ResvCheckValue:   binary.LittleEndian.Uint32(buffer[0x30:0x34]),

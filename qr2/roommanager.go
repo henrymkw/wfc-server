@@ -1,6 +1,8 @@
 package qr2
 
 import (
+	"math/rand"
+
 	"wwfc/common"
 	"wwfc/logging"
 
@@ -11,18 +13,16 @@ import (
 var ServerName = "roommanager"
 var rooms = map[string]*Room{}
 
-const (
-	// Requests sent from the client
-	PlaceHolderRequest = 0x00
-)
-
 var (
 	connBuffers = map[uint64]*[]byte{}
-	mutexRM       = deadlock.RWMutex{}
-
+	mutexRM     = deadlock.RWMutex{}
 )
 
-func NewConnection(index uint64, address string) {}
+func NewConnection(index uint64, address string) {
+	mutexRM.Lock()
+	connBuffers[index] = &[]byte{}
+	mutexRM.Unlock()
+}
 
 func CloseConnection(index uint64) {
 	mutexRM.Lock()
@@ -31,9 +31,7 @@ func CloseConnection(index uint64) {
 }
 
 func HandlePacket(index uint64, data []byte, address string) {
-	moduleName := "RM:" + address
-
-	logging.Info(moduleName, "Received packet with length", aurora.Cyan(len(data)), "from connection index", aurora.Cyan(index), "with data:", aurora.Cyan(printHex(data)))
+	moduleName := "RoomManager: " + address
 
 	mutexRM.RLock()
 	buffer := connBuffers[index]
@@ -58,4 +56,52 @@ func HandlePacket(index uint64, data []byte, address string) {
 		buffer = nil
 		return
 	}
+
+	matchRequestHeader := tryParseMatchRequestHeader(data)
+	if matchRequestHeader == nil {
+		logging.Info(moduleName, "failed to parse match request header from", address)
+		return
+	}
+
+	player := validateBasics(matchRequestHeader)
+	if player == nil {
+		logging.Info(moduleName, "Player failed basic validation for match request from", address)
+		return
+	}
+
+	// TODO: Is this a good place to do this?
+	player.roomManagerConnnectionIndex = index
+	player.roomManagerAddr = address
+
+	requestType := matchRequestHeader.requestType
+
+	switch requestType {
+	case OpenRoom:
+		handleOpenRoomRequest(player)
+	default:
+		logging.Error(moduleName, "Unknown request type", aurora.Cyan(requestType))
+	}
+}
+
+// validates basic requirements to even make a match making request
+// more can be added here
+func validateBasics(header *MatchRequestHeader) *Player {
+	// convert to int so we can check if the player exists
+	player, _ := playerBySearchID[header.searchId]
+	if player == nil {
+		logging.Info(moduleName, "No player with searchId", header.searchId, "exists")
+		return nil
+	}
+
+	// validate as much as we can, check for Authenticated, ExploitReceived, roomPointer == nil, etc
+	if !player.Authenticated {
+		logging.Info(moduleName, "PlayerId", player.PlayerId, "is not authenticated")
+		return nil
+	}
+
+	return player
+}
+
+func generateRoomID() uint32 {
+	return rand.Uint32()
 }

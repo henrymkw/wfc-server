@@ -7,7 +7,6 @@ import (
 	"os"
 	"strconv"
 
-	// "strings"
 	"time"
 	"wwfc/common"
 	"wwfc/logging"
@@ -16,22 +15,131 @@ import (
 )
 
 type Room struct {
-	roomID       uint32
-	roomName     string
+	roomID        uint32
+	roomName      string
 	CreateTime    time.Time
-	IsPrivateRoom     bool
-	MKWRegion     string
+	Region        common.Region
 	LastJoinIndex int
-	players       map[*Player]bool
+	players       map[*Player]bool // only added for non-guests
 
-	MKWRaceNumber    int
-	MKWCourseID      int
-	MKWEngineClassID int
+	RaceNumber    int
+	CourseID      int
+	EngineClassID int
 
-	MKWServerEnabled bool
-	mkwServerProxy   *MKWServerProxy
+	isFriendRoom   bool
+	mkwServerProxy *MKWServerProxy
+
+	matchPacket *MatchPacket
 }
 
+func (r *Room) isEmpty() bool {
+	for player := range r.players {
+		if player != nil {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (r *Room) isFull() bool {
+	if r.matchPacket != nil {
+		numPlayers := r.numPlayers()
+		if numPlayers > 12 {
+			logging.Error(moduleName, "Room", aurora.Cyan(r.roomName), "has", aurora.Cyan(numPlayers), "players. This is bad!")
+		}
+		if numPlayers == 12 {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *Room) numPlayers() uint32 {
+	// we need to count using the patchPacket's AidLocalPlayerCounts
+	// (for now, this is how the base game does it)
+
+	var total uint32 = 0
+	if r.matchPacket != nil {
+		for _, aidPlayerCount := range r.matchPacket.AidLocalPlayerCounts {
+			total += common.GetAidPlayerCount(aidPlayerCount)
+		}
+	}
+	return total
+}
+
+func createFriendRoom(player *Player) *Room {
+	if !canPlayerCreateFriendRoom(player) {
+		return nil
+	}
+
+	room := &Room{
+		roomID:        generateRoomID(),
+		roomName:      strconv.FormatUint(uint64(generateRoomID()), 16),
+		CreateTime:    time.Now(),
+		Region:        common.None,
+		LastJoinIndex: 0,
+		players:       map[*Player]bool{player: true},
+
+		RaceNumber:    0,
+		CourseID:      -1,
+		EngineClassID: -1,
+
+		isFriendRoom:   true,
+		mkwServerProxy: nil,
+	}
+
+	addPlayerToRoom(player, room)
+
+	matchPacket := initMatchPacket(room.roomID, player.is2Players)
+	if matchPacket == nil {
+		logging.Info(moduleName, "Failed to create match packet for new room", aurora.Cyan(room.roomName))
+		return nil
+	}
+
+	room.matchPacket = matchPacket
+
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+
+		for {
+			<-ticker.C
+
+			mutex.Lock()
+			room.broadcastMatchPackets()
+
+			mutex.Unlock()
+		}
+	}()
+
+	return room
+}
+
+func (r *Room) broadcastMatchPackets() {
+	matchPacket := r.matchPacket
+	if matchPacket == nil {
+		logging.Info(moduleName, "Cannot broadcast match packet for room", aurora.Cyan(r.roomName), "because it is nil")
+		return
+	}
+
+	for p := range r.players {
+		if p != nil && p.roomManagerAddr != "" {
+			err := matchPacket.sendToAid(p.Aid, p.roomManagerConnnectionIndex)
+			if err != nil {
+				p.numConsecutiveRoomManagerSendErrors += 1
+			} else {
+				p.numConsecutiveRoomManagerSendErrors = 0
+			}
+			if p.numConsecutiveRoomManagerSendErrors >= 5 {
+				// gotta remove them from the room
+				logging.Info(moduleName, "Player timed out, removing from room", aurora.Cyan(p.Addr.String()), "Aid", aurora.Cyan(p.Aid))
+				p.numConsecutiveRoomManagerSendErrors = 0
+				p.removeFromRoom()
+			}
+
+		}
+	}
+}
 
 func ProcessGPStatusUpdate(profileID uint32, senderIP uint64, status string) {
 	moduleName := "QR2/GPStatus:" + strconv.FormatUint(uint64(profileID), 10)
@@ -80,7 +188,7 @@ func ProcessGPStatusUpdate(profileID uint32, senderIP uint64, status string) {
 			return
 		}
 
-		player.removeFromroom()
+		player.removeFromRoom()
 	}
 }
 
@@ -194,9 +302,9 @@ func ProcessMKWSelectRecord(profileId uint32, key string, value string) {
 		mutex.Lock()
 		defer mutex.Unlock()
 
-		room.MKWRaceNumber++
-		room.MKWCourseID = int(courseId)
-		room.MKWEngineClassID = -1
+		room.RaceNumber++
+		room.CourseID = int(courseId)
+		room.EngineClassID = -1
 		return
 
 	case "wl:mkw_select_cc":
@@ -211,7 +319,7 @@ func ProcessMKWSelectRecord(profileId uint32, key string, value string) {
 		mutex.Lock()
 		defer mutex.Unlock()
 
-		room.MKWEngineClassID = int(ccId)
+		room.EngineClassID = int(ccId)
 		return
 	}
 

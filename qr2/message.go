@@ -1,6 +1,7 @@
 package qr2
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"os"
@@ -66,7 +67,7 @@ func SendClientMessage(senderIP string, destSearchID uint64, message []byte) {
 		destPid = "<UNKNOWN>"
 	}
 
-	destPlayerID := receiver.PlayerID
+	destPlayerID := receiver.PlayerId
 	packetCount := receiver.PacketCount + 1
 	receiver.PacketCount = packetCount
 	destAddr := receiver.Addr
@@ -146,7 +147,7 @@ func sendClientExploit(moduleName string, playerCopy Player) {
 	}
 
 	mutex.Lock()
-	player, playerExists := players[makeLookupAddr(playerCopy.Addr.String())]
+	player, playerExists := players[common.MakeLoopupAddr(playerCopy.Addr.String())]
 	if !playerExists {
 		mutex.Unlock()
 		logging.Error(moduleName, "Player not found")
@@ -158,7 +159,7 @@ func sendClientExploit(moduleName string, playerCopy Player) {
 	mutex.Unlock()
 
 	// Now send the exploit
-	payload := createResponseHeader(ClientMessageRequest, playerCopy.PlayerID)
+	payload := createResponseHeader(ClientMessageRequest, playerCopy.PlayerId)
 	payload = append(payload, []byte{0, 0, 0, 0}...)
 	binary.BigEndian.PutUint32(payload[len(payload)-4:], packetCount)
 	payload = append(payload, exploit[0xB:]...)
@@ -174,7 +175,7 @@ func sendClientExploit(moduleName string, playerCopy Player) {
 			time.Sleep(2 * time.Second)
 
 			mutex.Lock()
-			player, playerExists := players[makeLookupAddr(playerCopy.Addr.String())]
+			player, playerExists := players[common.MakeLoopupAddr(playerCopy.Addr.String())]
 			if !playerExists || player.ExploitReceived || player.login == nil || !player.login.NeedsExploit {
 				mutex.Unlock()
 				return
@@ -184,4 +185,42 @@ func sendClientExploit(moduleName string, playerCopy Player) {
 			logging.Notice(moduleName, "Resending SBCM exploit to DNS patcher client")
 		}
 	}()
+}
+
+func sendPlayerSearchId(player *Player) {
+	packet := SearchIdPacket{
+		Magic:    [8]uint8{'S', 'E', 'A', 'R', 'C', 'H', 'I', 'D'},
+		SearchId: player.SearchId,
+	}
+
+	buf := new(bytes.Buffer)
+	binary.Write(buf, binary.BigEndian, packet)
+
+	go func() {
+		for {
+			_, err := masterConn.WriteTo(buf.Bytes(), &player.Addr)
+			if err != nil {
+				logging.Info(moduleName, "Error sending search ID:", err.Error())
+			}
+
+			time.Sleep(3 * time.Second)
+
+			player = players[common.MakeLoopupAddr(player.Addr.String())]
+			if player == nil || player.recvSearchId {
+				return
+			}
+
+			if player.searchIdGuesses >= 5 {
+				logging.Info(moduleName, "Reached max search ID resends for player", aurora.Cyan(player.PlayerId))
+				return
+			}
+
+			if player.recvSearchId {
+				logging.Info(moduleName, "Player acknowledged search ID, stopping resends")
+				return
+			}
+		}
+
+	}()
+
 }
