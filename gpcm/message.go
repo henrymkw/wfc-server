@@ -8,7 +8,6 @@ import (
 	"strings"
 	"wwfc/common"
 	"wwfc/logging"
-	// "wwfc/qr2"
 
 	"github.com/logrusorgru/aurora/v3"
 )

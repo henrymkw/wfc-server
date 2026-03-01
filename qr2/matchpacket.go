@@ -21,34 +21,18 @@ type MatchPacket struct {
 	AidLocalPlayerCounts []uint32 // local player counts for each player. Size is always 12, even if there isn't 12 players in the room
 }
 
-// called when room is created
-func initMatchPacket(roomID uint32, isHostLocal2Players bool) *MatchPacket {
-	// TODO: set necessary fields for player and room
-
-	aidPlayerCounts := make([]uint32, 12)
-	aidPlayerCounts[0] = common.SetAidPlayerCount(isHostLocal2Players)
-
-	return &MatchPacket{
-		Magic:                0x77846772,
-		AidBitmap:            common.SetAid(0, 0),
-		NumAids:              1,
-		DirectAidBitmap:      common.SetAid(0, 0),
-		RoomID:               roomID,
-		PlayerAid:            0,
-		HostAid:              0,
-		Suspended:            false,
-		RoomCanceled:         false,
-		AidLocalPlayerCounts: aidPlayerCounts,
-	}
-}
-
-func (m *MatchPacket) sendToAid(aid uint8, connectionIndex uint64) error {
-	if aid > 11 {
-		logging.Error(moduleName, "Invalid aid", aurora.Yellow(aid), "when sending match packet")
+func sendToAid(aidBitmap uint32, numAids uint32, directAidBitmap uint32, roomId uint32, hostAid uint8, roomSuspended bool, roomCanceled bool, localPlayerCounts *[12]uint32, playerAid uint8, playerConnectionIndex uint64) error {
+	if playerAid > 11 {
+		logging.Error(moduleName, "Invalid player aid (", playerAid, ") when sending match packet")
 		return nil
 	}
 
-	return common.SendPacket(ServerName, connectionIndex, m.toByteSlice(aid))
+	if hostAid > 11 {
+		logging.Error(moduleName, "Invalid host aid (", hostAid, ") when sending match packet")
+		return nil
+	}
+
+	return common.SendPacket(ServerName, playerConnectionIndex, toByteSlice(aidBitmap, numAids, directAidBitmap, roomId, hostAid, roomSuspended, roomCanceled, localPlayerCounts, playerAid))
 }
 
 func (m *MatchPacket) removeAid(aid uint8) {
@@ -64,19 +48,19 @@ func (m *MatchPacket) removeAid(aid uint8) {
 }
 
 // pass in the receiver's aid, this allows us to set the aid for each send
-func (m *MatchPacket) toByteSlice(aid uint8) []byte {
+func toByteSlice(aidBitmap uint32, numAids uint32, directAidBitmap uint32, roomID uint32, hostAid uint8, roomSuspended bool, roomCanceled bool, localPlayerCounts *[12]uint32, playerAid uint8) []byte {
 	pb := &common.PacketBuilder{Buf: make([]byte, 0, 48)}
 
-	pb.WriteUint32(m.Magic)
-	pb.WriteUint32(m.AidBitmap)
-	pb.WriteUint32(m.NumAids)
-	pb.WriteUint32(m.DirectAidBitmap)
-	pb.WriteUint32(m.RoomID)
-	pb.WriteUint8(aid)
-	pb.WriteUint8(m.HostAid)
-	pb.WriteBool(m.Suspended)
-	pb.WriteBool(m.RoomCanceled)
-	for _, count := range m.AidLocalPlayerCounts {
+	pb.WriteUint32(0x77846772)
+	pb.WriteUint32(aidBitmap)
+	pb.WriteUint32(numAids)
+	pb.WriteUint32(directAidBitmap)
+	pb.WriteUint32(roomID)
+	pb.WriteUint8(playerAid)
+	pb.WriteUint8(hostAid)
+	pb.WriteBool(roomSuspended)
+	pb.WriteBool(roomCanceled)
+	for _, count := range *localPlayerCounts {
 		pb.WriteUint32(count)
 	}
 

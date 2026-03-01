@@ -107,6 +107,7 @@ func (g *GameSpySession) addFriend(command common.GameSpyCommand) {
 	// TODO: Add a limit
 	if !g.isFriendAdded(uint32(newProfileId)) {
 		g.FriendList = append(g.FriendList, uint32(newProfileId))
+		qr2.AddToFriendsList(g.User.ProfileId, uint32(newProfileId))
 	}
 
 	// Check if destination has added the sender
@@ -175,12 +176,15 @@ func (g *GameSpySession) removeFriend(command common.GameSpyCommand) {
 	if g.isFriendAdded(delProfileID32) {
 		delProfileIDIndex := g.getFriendIndex(delProfileID32)
 		removeFromUint32Array(&g.FriendList, delProfileIDIndex)
+		qr2.RemoveFromFriendList(g.User.ProfileId, delProfileID32)
 	}
 
 	if !g.User.OpenHost {
 		if g.isFriendAuthorized(delProfileID32) {
 			delProfileIDIndex := g.getAuthorizedFriendIndex(delProfileID32)
 			removeFromUint32Array(&g.AuthFriendList, delProfileIDIndex)
+			qr2.RemoveFromFriendList(g.User.ProfileId, delProfileID32)
+
 		}
 
 		if session, ok := sessions[delProfileID32]; ok && session.LoggedIn && session.isFriendAuthorized(g.User.ProfileId) {

@@ -26,7 +26,7 @@ func tryVerifySearchIdPacketReceipt(addr net.UDPAddr, data []byte) bool {
 		return false
 	}
 
-	player := players[common.MakeLoopupAddr(addr.String())]
+	player := players[common.MakeLookupAddr(addr.String())]
 	if player == nil {
 		return false
 	}

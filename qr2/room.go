@@ -20,87 +20,67 @@ type Room struct {
 	CreateTime    time.Time
 	Region        common.Region
 	LastJoinIndex int
+	host          *Player          // only applies for private rooms, authority of room settings
 	players       map[*Player]bool // only added for non-guests
 
 	RaceNumber    int
 	CourseID      int
 	EngineClassID int
 
-	isFriendRoom   bool
-	mkwServerProxy *MKWServerProxy
-
-	matchPacket *MatchPacket
+	isFriendRoom         bool
+	mkwServer            *MKWServer
+	aidBitmap            uint32     // available aid bitmap
+	numAids              uint32     // num non-guest players
+	directAidBitmap      uint32     // aid bitmap, including guests.
+	suspended            bool       // match making suspension state
+	canceled             bool       // whether room is canceled
+	aidLocalPlayerCounts [12]uint32 // local player counts for each player. Size is always 12, even if there isn't 12 players in the room
 }
 
-func (r *Room) isEmpty() bool {
-	for player := range r.players {
-		if player != nil {
-			return false
-		}
-	}
-
-	return true
-}
-
-func (r *Room) isFull() bool {
-	if r.matchPacket != nil {
-		numPlayers := r.numPlayers()
-		if numPlayers > 12 {
-			logging.Error(moduleName, "Room", aurora.Cyan(r.roomName), "has", aurora.Cyan(numPlayers), "players. This is bad!")
-		}
-		if numPlayers == 12 {
-			return true
-		}
-	}
-	return false
-}
-
-func (r *Room) numPlayers() uint32 {
-	// we need to count using the patchPacket's AidLocalPlayerCounts
-	// (for now, this is how the base game does it)
-
-	var total uint32 = 0
-	if r.matchPacket != nil {
-		for _, aidPlayerCount := range r.matchPacket.AidLocalPlayerCounts {
-			total += common.GetAidPlayerCount(aidPlayerCount)
-		}
-	}
-	return total
-}
-
-func createFriendRoom(player *Player) *Room {
-	if !canPlayerCreateFriendRoom(player) {
+func createFriendRoom(host *Player) *Room {
+	if !canPlayerCreateFriendRoom(host) {
 		return nil
 	}
+
+	var localPlayerCounts [12]uint32
+	localPlayerCounts[0] = common.SetLocalPlayerCount(host.localPlayerCount)
+
+	id := generateRoomID()
+	name := strconv.FormatUint(uint64(id), 16)
 
 	room := &Room{
-		roomID:        generateRoomID(),
-		roomName:      strconv.FormatUint(uint64(generateRoomID()), 16),
-		CreateTime:    time.Now(),
-		Region:        common.None,
-		LastJoinIndex: 0,
-		players:       map[*Player]bool{player: true},
-
-		RaceNumber:    0,
-		CourseID:      -1,
-		EngineClassID: -1,
-
-		isFriendRoom:   true,
-		mkwServerProxy: nil,
+		roomID:               	id,
+		roomName:             	name,
+		CreateTime:           	time.Now(),
+		Region:               	common.None,
+		LastJoinIndex:        	0,
+		host:                 	host,
+		players:              	map[*Player]bool{host: true},
+		RaceNumber:           	0,
+		CourseID:             	-1,
+		EngineClassID:     	   	-1,
+		isFriendRoom:     	   	true,
+		mkwServer:       	    nil,
+		aidBitmap: 			  	0,
+		numAids:          	    0,
+		directAidBitmap: 		0,
+		aidLocalPlayerCounts: localPlayerCounts,
 	}
 
-	addPlayerToRoom(player, room)
-
-	matchPacket := initMatchPacket(room.roomID, player.is2Players)
-	if matchPacket == nil {
-		logging.Info(moduleName, "Failed to create match packet for new room", aurora.Cyan(room.roomName))
+	mkwServer := createMKWServer(room)
+	if mkwServer == nil {
+		logging.Info(moduleName, "mkwServer creation failed")
 		return nil
 	}
 
-	room.matchPacket = matchPacket
+	host.addPlayerToRoom(room)
+
+	room.mkwServer = mkwServer
+
+	// room.mkwServer.addPlayer(host)
 
 	go func() {
-		ticker := time.NewTicker(1 * time.Second)
+		ticker := time.NewTicker(1000 * time.Millisecond)
 
 		for {
 			<-ticker.C
@@ -112,33 +92,102 @@ func createFriendRoom(player *Player) *Room {
 		}
 	}()
 
+	rooms[name] = room
+
 	return room
 }
 
+// at this point, we've varified that friendsAddedOrOpenHost() returned true, the host is the rooms host according to both the room and player types
+func (r *Room) joinFriendRoom(guest *Player) bool {
+	// some verification before a player can join a room:
+
+	if r.suspended {
+		logging.Info(name, "Match making is suspended, cannot join currently!")
+		return false
+	}
+
+	if r.canceled {
+		logging.Info(name, "Room is canceled!")
+		return false
+	}
+
+	joinResult := guest.addPlayerToRoom(r)
+
+	return joinResult
+}
+
 func (r *Room) broadcastMatchPackets() {
-	matchPacket := r.matchPacket
-	if matchPacket == nil {
-		logging.Info(moduleName, "Cannot broadcast match packet for room", aurora.Cyan(r.roomName), "because it is nil")
+	for p, exists := range r.players {
+		if p == nil {
+			continue
+		}
+
+		if !exists {
+			continue
+		}
+
+		if p.roomManagerAddr == "" {
+			continue
+		}
+
+		err := sendToAid(r.aidBitmap, r.numAids, r.directAidBitmap, r.roomID, r.host.aid, r.suspended, r.canceled, &r.aidLocalPlayerCounts, p.aid, p.roomManagerConnnectionIndex)
+		if err != nil {
+			p.numConsecutiveRoomManagerSendErrors += 1
+		} else {
+			p.numConsecutiveRoomManagerSendErrors = 0
+		}
+		if p.numConsecutiveRoomManagerSendErrors >= 5 {
+			// gotta remove them from the room
+			logging.Info(moduleName, "Player timed out, removing from room", aurora.Cyan(p.Addr.String()), "Aid", aurora.Cyan(p.aid))
+			p.numConsecutiveRoomManagerSendErrors = 0
+			p.removeFromRoom()
+		}
+
+	}
+}
+
+func (r *Room) removePlayer(p *Player) {
+	// check the player is in the room
+	if !r.players[p] {
 		return
 	}
 
-	for p := range r.players {
-		if p != nil && p.roomManagerAddr != "" {
-			err := matchPacket.sendToAid(p.Aid, p.roomManagerConnnectionIndex)
-			if err != nil {
-				p.numConsecutiveRoomManagerSendErrors += 1
-			} else {
-				p.numConsecutiveRoomManagerSendErrors = 0
-			}
-			if p.numConsecutiveRoomManagerSendErrors >= 5 {
-				// gotta remove them from the room
-				logging.Info(moduleName, "Player timed out, removing from room", aurora.Cyan(p.Addr.String()), "Aid", aurora.Cyan(p.Aid))
-				p.numConsecutiveRoomManagerSendErrors = 0
-				p.removeFromRoom()
-			}
+	r.numAids -= p.localPlayerCount
 
+	leaversAid := p.aid
+	r.aidBitmap = common.ClearAid(r.aidBitmap, leaversAid)
+	r.directAidBitmap = common.ClearAid(r.directAidBitmap, leaversAid)
+	r.aidLocalPlayerCounts[leaversAid] = 0
+
+	// delete the room in this case
+	if p == r.host {
+		r.host = nil
+	}
+	delete(r.players, p)
+}
+
+func (r *Room) isEmpty() bool {
+	return r.numAids == 0
+}
+
+func (r *Room) isFull() bool {
+	numPlayers := r.numPlayers()
+	if numPlayers > 12 {
+		// error case, this is bad
+		logging.Error(moduleName, "BAD! Room", r.roomID, "has too many players! Num:", numPlayers)
+	}
+	return numPlayers == 12
+}
+
+// we can't go by numAids since an aid can have at most 2 players
+func (r *Room) numPlayers() uint32 {
+	var total uint32 = 0
+	for p, exists := range r.players {
+		if p != nil && exists {
+			total += p.localPlayerCount
 		}
 	}
+	return total
 }
 
 func ProcessGPStatusUpdate(profileID uint32, senderIP uint64, status string) {
@@ -378,10 +427,10 @@ func loadRooms() error {
 
 func shutdownMKWServerServers() {
 	for _, g := range rooms {
-		if g.mkwServerProxy != nil {
-			if g.mkwServerProxy.Cmd != nil && g.mkwServerProxy.Cmd.Process != nil {
+		if g.mkwServer != nil {
+			if g.mkwServer.Cmd != nil && g.mkwServer.Cmd.Process != nil {
 				logging.Info("QR2", "Shutting down mkw-server process for room", aurora.Cyan(g.roomName))
-				g.mkwServerProxy.Cmd.Process.Kill()
+				g.mkwServer.Cmd.Process.Kill()
 			}
 		}
 	}

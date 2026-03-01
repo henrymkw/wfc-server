@@ -14,10 +14,16 @@ type MatchRequestHeader struct {
 	searchId    uint64
 }
 
+type JoinFroomRequest struct {
+	header          MatchRequestHeader
+	friendProfileId uint32
+}
+
 type MatchRequestType uint8
 
 const (
-	OpenRoom = 0
+	OpenFroom = 0
+	JoinFroom = 1
 )
 
 func tryParseMatchRequestHeader(data []byte) *MatchRequestHeader {

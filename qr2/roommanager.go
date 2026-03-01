@@ -57,7 +57,7 @@ func HandlePacket(index uint64, data []byte, address string) {
 		return
 	}
 
-	matchRequestHeader := tryParseMatchRequestHeader(data)
+	matchRequestHeader := tryParseMatchRequestHeader(data[:16])
 	if matchRequestHeader == nil {
 		logging.Info(moduleName, "failed to parse match request header from", address)
 		return
@@ -76,8 +76,28 @@ func HandlePacket(index uint64, data []byte, address string) {
 	requestType := matchRequestHeader.requestType
 
 	switch requestType {
-	case OpenRoom:
+	case OpenFroom:
+		logging.Info(moduleName, "Received OpenFroom request from", address)
 		handleOpenRoomRequest(player)
+	case JoinFroom:
+		logging.Info(moduleName, "Received JoinFroom request from", address)
+		if len(data) != 0x18 {
+			logging.Info(moduleName, "Invalid JoinFroom request length from", address)
+			return
+		}
+
+		friendProfileId, err := common.SliceOfFourToUint32(data[0x10:0x14])
+		if err != nil {
+			logging.Info(moduleName, "Failed to parse friend profile ID from JoinFroom request from", address)
+			return
+		}
+
+		req := &JoinFroomRequest{
+			header:          *matchRequestHeader,
+			friendProfileId: friendProfileId,
+		}
+
+		handleJoinFroomRequest(player, req)
 	default:
 		logging.Error(moduleName, "Unknown request type", aurora.Cyan(requestType))
 	}

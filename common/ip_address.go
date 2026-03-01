@@ -117,7 +117,7 @@ func IPFormatLookupAddrToString(lookupAddr uint64) string {
 }
 
 // converts an address from a string to uint64
-func MakeLoopupAddr(addr string) uint64 {
+func MakeLookupAddr(addr string) uint64 {
 	ip, port := IPFormatToInt(addr)
 	return (uint64(port) << 32) | uint64(uint32(ip))
 }

@@ -42,11 +42,10 @@ type Player struct {
 	recvSearchId    bool
 	searchIdGuesses uint32 // attempt to prevent brute forcing the searchId
 
-	Aid         uint8 // only set when in a room
-	IsHost      bool  // only set when in a room
-	HasGuest    bool  // set when player has a guest
-	SuspendVote bool  // vote to suspend match making.
-	is2Players  bool
+	aid              uint8 // only set when in a room
+	isHost           bool  // only set when in a room
+	suspendVote      bool  // vote to suspend match making.
+	localPlayerCount uint32
 
 	roomManagerConnnectionIndex         uint64
 	roomManagerAddr                     string // address roommanager sends to
@@ -59,23 +58,49 @@ var (
 	mutex            = deadlock.Mutex{}
 )
 
-func addPlayerToRoom(p *Player, r *Room) bool {
-	// check if the room empty (just started)
+func (p *Player) addPlayerToRoom(r *Room) bool {
+	// check if the room just opened, is full, or has players in it
 	if r.isEmpty() {
 		r.players[p] = true
+		r.aidBitmap = common.SetAid(0, 0)
+		r.directAidBitmap = common.SetAid(0, 0)
+		r.numAids = 1
+		r.suspended = false
+		r.canceled = false
 		p.roomPointer = r
 		p.RoomName = r.roomName
-		p.Aid = 0
-		p.IsHost = true
-		p.SuspendVote = false
+		p.aid = 0
+		p.isHost = true
+		p.suspendVote = false
 		return true
 	} else if r.isFull() {
 		return false
 	} else {
-		// TODO: Add guest to friend room
-		return false
-	}
+		// need to find the next available aid
+		aid := common.GetAvailableAid(r.aidBitmap)
 
+		// check for invalid aid values and zero (host's aid)
+		if aid > 11 && aid != 0 {
+			logging.Info(name, "returned aid is invalid:", aid)
+			return false
+		}
+		// for the room, need to modify: players, aidBitmap, availableAids, numAids, aidLocalPlayerCounts
+
+		r.players[p] = true
+		r.aidBitmap = common.SetAid(r.aidBitmap, aid)
+		r.directAidBitmap = common.SetAid(r.directAidBitmap, aid)
+		r.numAids++
+		r.aidLocalPlayerCounts[aid] = common.SetLocalPlayerCount(p.localPlayerCount)
+
+		// for the player, need to modify: roomPointer, Aid, IsHost, localPlayerCount
+		p.roomPointer = r
+		p.aid = aid
+		p.isHost = false
+
+		r.mkwServer.sendAddPlayerRequest(p)
+
+		return true
+	}
 }
 
 // Remove a player. Expects the global mutex to already be locked.
@@ -109,20 +134,17 @@ func (player *Player) removeFromRoom() {
 	}
 
 	room := player.roomPointer
-	delete(room.players, player)
 
-	matchPacket := room.matchPacket
-	if matchPacket != nil {
-		matchPacket.removeAid(player.Aid)
-	}
+	room.removePlayer(player)
 
-	if len(room.players) == 0 {
+	// remove if there are no players or the host is null (frooms only)
+	if room.numAids == 0 || (room.isFriendRoom && room.host == nil) {
 		logging.Notice("QR2", "Deleting room", aurora.Cyan(room.roomName))
-		if room.mkwServerProxy != nil {
+		if room.mkwServer != nil {
 			logging.Notice("QR2", "Terminating mkw-server process for room", aurora.Cyan(room.roomName))
-			if room.mkwServerProxy.Cmd != nil && room.mkwServerProxy.Cmd.Process != nil {
-				logging.Notice("QR2", "Terminating mkw-server process with PID", aurora.Cyan(room.mkwServerProxy.Cmd.Process.Pid))
-				room.mkwServerProxy.Cmd.Process.Signal(syscall.SIGTERM)
+			if room.mkwServer.Cmd != nil && room.mkwServer.Cmd.Process != nil {
+				logging.Notice("QR2", "Terminating mkw-server process with PID", aurora.Cyan(room.mkwServer.Cmd.Process.Pid))
+				room.mkwServer.Cmd.Process.Signal(syscall.SIGTERM)
 			} else {
 				logging.Notice("QR2", "No mkw-server process found for room", aurora.Cyan(room.roomName))
 			}
@@ -141,13 +163,17 @@ func (player *Player) removeFromRoom() {
 		}
 	}
 
-	mkwServerProxy := room.mkwServerProxy
-	if mkwServerProxy != nil {
-		mkwServerProxy.sendMkwServerRemoveClient(player)
+	mkwServer := room.mkwServer
+	if mkwServer != nil {
+		mkwServer.sendMkwServerRemoveClient(player)
 	}
 
 	player.roomPointer = nil
 	player.RoomName = ""
+}
+
+func (p *Player) sendReliableMsgToPlayer(msg []byte) error {
+	return common.SendPacket(ServerName, p.roomManagerConnnectionIndex, msg)
 }
 
 // Update player data, creating the player if it doesn't exist. Returns a copy of the player data.
@@ -155,7 +181,7 @@ func setPlayerData(moduleName string, addr net.Addr, playerId uint32, payload ma
 	newPID, newPIDValid := payload["dwc_pid"]
 	delete(payload, "dwc_pid")
 
-	lookupAddr := common.MakeLoopupAddr(addr.String())
+	lookupAddr := common.MakeLookupAddr(addr.String())
 
 	// Moving into performing operations on the player data, so lock the mutex
 	mutex.Lock()
@@ -170,17 +196,18 @@ func setPlayerData(moduleName string, addr net.Addr, playerId uint32, payload ma
 	if !playerExists {
 		logging.Info(moduleName, "creating player in qr2 with addr", addr.String())
 		player = &Player{
-			PlayerId:        playerId,
-			Addr:            *addr.(*net.UDPAddr),
-			Challenge:       "",
-			Authenticated:   false,
-			LastKeepAlive:   time.Now().UTC().Unix(),
-			Data:            payload,
-			PacketCount:     0,
-			messageMutex:    &deadlock.Mutex{},
-			messageAckWaker: &sleep.Waker{},
-			recvSearchId:    false,
-			searchIdGuesses: 0,
+			PlayerId:         playerId,
+			Addr:             *addr.(*net.UDPAddr),
+			Challenge:        "",
+			Authenticated:    false,
+			LastKeepAlive:    time.Now().UTC().Unix(),
+			Data:             payload,
+			PacketCount:      0,
+			messageMutex:     &deadlock.Mutex{},
+			messageAckWaker:  &sleep.Waker{},
+			recvSearchId:     false,
+			searchIdGuesses:  0,
+			localPlayerCount: 1, // TODO: Make dynamic
 		}
 	}
 
@@ -270,7 +297,7 @@ func (player *Player) setProfileID(moduleName string, newPID string, gpcmIP stri
 	// Constraint: only one player can exist with a given profile ID
 	if loginInfo.player != nil {
 		logging.Notice(moduleName, "Removing outdated player", aurora.BrightCyan(loginInfo.player.Addr.String()), "with PID", aurora.Cyan(newPID))
-		removePlayer(common.MakeLoopupAddr(loginInfo.player.Addr.String()))
+		removePlayer(common.MakeLookupAddr(loginInfo.player.Addr.String()))
 	}
 
 	loginInfo.player = player
@@ -293,14 +320,14 @@ func (player *Player) setProfileID(moduleName string, newPID string, gpcmIP stri
 func DoesPlayerExist(addr string) bool {
 	logging.Info("QR2", "Checking player existence for", aurora.Cyan(addr))
 	mutex.Lock()
-	_, playerExists := players[common.MakeLoopupAddr(addr)]
+	_, playerExists := players[common.MakeLookupAddr(addr)]
 	mutex.Unlock()
 	return playerExists
 }
 
 func IsPlayerInRoom(addr string) bool {
 	mutex.Lock()
-	player, _ := players[common.MakeLoopupAddr(addr)]
+	player, _ := players[common.MakeLookupAddr(addr)]
 	mutex.Unlock()
 
 	if player == nil || player.roomPointer == nil {
@@ -410,6 +437,43 @@ func loadPlayers() error {
 	return nil
 }
 
-func (player *Player) GetProfileId() string {
-	return player.Data["dwc_pid"]
+func (p *Player) GetProfileId() string {
+	return p.Data["dwc_pid"]
+}
+
+// verify that the guest can join the host
+// one must be true:
+// - host has open-host enabled
+// - both players have each other added
+func (p *Player) friendsAddedOrOpenHost(profileId uint32) bool {
+	// get friend's login info from profileId
+	login := logins[profileId]
+
+	if login == nil {
+		logging.Info(moduleName, p.aid, "requested to join", profileId, "which doesn't exist!")
+		return false
+	}
+
+	// check for open host
+	if login.OpenHost {
+		logging.Info(moduleName, p.PlayerId, "can join the room since friend has Open Host on")
+		return true
+	}
+
+	// get the joiners login to get their profileId
+	joinersLogin := p.login
+	if joinersLogin == nil {
+		logging.Info(moduleName, "joiners LoginInfo is null (which shouldn't happen)")
+		return false
+	}
+
+	for _, friendsFriend := range login.friendsList {
+		if friendsFriend == joinersLogin.ProfileID {
+			logging.Info(moduleName, "friends have eachother added, can join room!")
+			return true
+		}
+	}
+
+	logging.Info(moduleName, "Cannot join", profileId)
+	return false
 }

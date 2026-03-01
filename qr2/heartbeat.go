@@ -65,7 +65,7 @@ func heartbeat(moduleName string, conn net.PacketConn, addr net.UDPAddr, buffer 
 	payload["publicip"] = realIP
 	payload["publicport"] = realPort
 
-	lookupAddr := common.MakeLoopupAddr(addr.String())
+	lookupAddr := common.MakeLookupAddr(addr.String())
 
 	statechanged, ok := payload["statechanged"]
 	if ok && statechanged == "2" {

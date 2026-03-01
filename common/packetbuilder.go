@@ -24,8 +24,21 @@ func (p *PacketBuilder) WriteUint16(v uint16) {
 	p.Buf = append(p.Buf, b...)
 }
 
+func (p *PacketBuilder) WriteInt32(v int32) {
+	b := make([]byte, 4)
+	val := uint32(v)
+	binary.BigEndian.PutUint32(b, val)
+	p.Buf = append(p.Buf, b...)
+}
+
 func (p *PacketBuilder) WriteUint32(v uint32) {
 	b := make([]byte, 4)
 	binary.BigEndian.PutUint32(b, v)
+	p.Buf = append(p.Buf, b...)
+}
+
+func (p *PacketBuilder) WriteUint64(v uint64) {
+	b := make([]byte, 8)
+	binary.BigEndian.PutUint64(b, v)
 	p.Buf = append(p.Buf, b...)
 }

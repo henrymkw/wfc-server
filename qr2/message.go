@@ -147,7 +147,7 @@ func sendClientExploit(moduleName string, playerCopy Player) {
 	}
 
 	mutex.Lock()
-	player, playerExists := players[common.MakeLoopupAddr(playerCopy.Addr.String())]
+	player, playerExists := players[common.MakeLookupAddr(playerCopy.Addr.String())]
 	if !playerExists {
 		mutex.Unlock()
 		logging.Error(moduleName, "Player not found")
@@ -175,7 +175,7 @@ func sendClientExploit(moduleName string, playerCopy Player) {
 			time.Sleep(2 * time.Second)
 
 			mutex.Lock()
-			player, playerExists := players[common.MakeLoopupAddr(playerCopy.Addr.String())]
+			player, playerExists := players[common.MakeLookupAddr(playerCopy.Addr.String())]
 			if !playerExists || player.ExploitReceived || player.login == nil || !player.login.NeedsExploit {
 				mutex.Unlock()
 				return
@@ -205,7 +205,7 @@ func sendPlayerSearchId(player *Player) {
 
 			time.Sleep(3 * time.Second)
 
-			player = players[common.MakeLoopupAddr(player.Addr.String())]
+			player = players[common.MakeLookupAddr(player.Addr.String())]
 			if player == nil || player.recvSearchId {
 				return
 			}

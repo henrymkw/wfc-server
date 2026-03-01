@@ -161,7 +161,7 @@ func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
 		mutex.Lock()
 
 		var ok bool
-		player, ok = players[common.MakeLoopupAddr(addr.String())]
+		player, ok = players[common.MakeLookupAddr(addr.String())]
 		if !ok {
 			mutex.Unlock()
 			logging.Error(moduleName, "Cannot find player for this IP address")
@@ -243,38 +243,6 @@ func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
 		player.ExploitReceived = true
 		if login := player.login; login != nil {
 			login.NeedsExploit = false
-		}
-
-	case MKWServerClientHandler:
-		logging.Info(moduleName, "Command:", aurora.Yellow(" MKWServerClientHandler"))
-
-		playerAddr := common.MakeLoopupAddr(addr.String())
-		player, exists := players[playerAddr]
-		if !exists {
-			logging.Error(moduleName, "No player found for MKW Server Manager packet")
-			return
-		}
-
-		room := player.roomPointer
-		if room == nil {
-			logging.Error(moduleName, "player does not belong to a room")
-			return
-		}
-
-		playerRequestType := buffer[1]
-
-		mkwServerProxy := room.mkwServerProxy
-		if mkwServerProxy == nil {
-			logging.Error(moduleName, "room does not have a MKWServerProxy")
-			return
-		}
-
-		switch playerRequestType {
-		case ServerJoinFroomRequest:
-			mkwServerProxy.handlePlayerJoinFroomRequest(player, buffer)
-
-		default:
-			logging.Warn(moduleName, "Unknown MKW Server Client Handler request type:", aurora.Yellow(playerRequestType))
 		}
 
 	default:

@@ -19,11 +19,14 @@ type LoginInfo struct {
 	DeviceAuthenticated bool
 	Restricted          bool
 	player              *Player
+
+	friendsList [30]uint32
+	OpenHost    bool
 }
 
 var logins = map[uint32]*LoginInfo{}
 
-func Login(profileID uint32, gameCode string, inGameName string, consoleFriendCode uint64, fcGame string, publicIP string, needsExploit bool, deviceAuthenticated bool, restricted bool) {
+func Login(profileID uint32, gameCode string, inGameName string, consoleFriendCode uint64, fcGame string, publicIP string, needsExploit bool, deviceAuthenticated bool, restricted bool, openHost bool) {
 	mutex.Lock()
 	defer mutex.Unlock()
 
@@ -38,6 +41,8 @@ func Login(profileID uint32, gameCode string, inGameName string, consoleFriendCo
 		DeviceAuthenticated: deviceAuthenticated,
 		Restricted:          restricted,
 		player:              nil,
+
+		OpenHost: openHost,
 	}
 }
 
@@ -60,7 +65,7 @@ func Logout(profileID uint32) {
 	// Delete login's player
 	if login, exists := logins[profileID]; exists {
 		if login.player != nil {
-			removePlayer(common.MakeLoopupAddr(login.player.Addr.String()))
+			removePlayer(common.MakeLookupAddr(login.player.Addr.String()))
 		}
 	}
 
@@ -112,4 +117,32 @@ func loadLogins() error {
 	}
 
 	return nil
+}
+
+func AddToFriendsList(profileId uint32, friendId uint32) {
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	if login, exists := logins[profileId]; exists {
+		for i := range login.friendsList {
+			if login.friendsList[i] == 0 {
+				login.friendsList[i] = friendId
+				break
+			}
+		}
+	}
+}
+
+func RemoveFromFriendList(profileId uint32, friendId uint32) {
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	if login, exists := logins[profileId]; exists {
+		for i := range login.friendsList {
+			if login.friendsList[i] == friendId {
+				login.friendsList[i] = 0
+				break
+			}
+		}
+	}
 }

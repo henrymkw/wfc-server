@@ -8,20 +8,21 @@ import (
 	"strconv"
 	"strings"
 
+	"wwfc/common"
 	"wwfc/logging"
 )
 
-type MKWServerProxy struct {
+type MKWServer struct {
 	// process of the mkw server. i think this wouldnt work for remove servers
 	Cmd             *exec.Cmd
 	isRemote        bool         // TODO: Unused for now
-	roomAddr        *net.UDPAddr // the udp address of the mkw server (clients send/receive here)
-	connToMKWServer net.Conn     // connection to the mkw server's WFC listener
+	udpAddr			net.UDPAddr // the udp address of the mkw server (clients send/receive here)
+	conn			net.Conn     // connection to the mkw server's WFC listener
 	roomPointer     *Room
 }
 
 // key is the room address, easy for clients/rooms to lookup
-var mkwServerProxies = map[string]*MKWServerProxy{}
+var mkwServers = map[int]*MKWServer{}
 
 const (
 	// Requests sent from the client
@@ -29,6 +30,27 @@ const (
 	ServerJoinFroomRequest  = 0x02
 	ServerLeaveFroomRequest = 0x03
 )
+
+func getMKWServerByPort(msg []byte) *MKWServer {
+	if len(msg) != 3 {
+		logging.Info(moduleName, "Invalid msg len to get mkwServer by port:", len(msg))
+		return nil
+	}
+
+	port, err := common.UnpackPort(msg[1:])
+	if err != nil {
+		logging.Info(moduleName, "Server sent back a bad port")
+		return nil
+	}
+
+	mkwServer := mkwServers[port]
+	if mkwServer == nil {
+		logging.Info(moduleName, "no mkwServer at port", port)
+		return nil
+	}
+	logging.Info(moduleName, "found mkwServer at port:", port)
+	return mkwServers[port]
+}
 
 func findOpenUDPPort(low, high int) (int, error) {
 	if low > high {
