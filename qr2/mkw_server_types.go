@@ -14,7 +14,7 @@ import (
 
 type MKWServer struct {
 	// process of the mkw server. i think this wouldnt work for remove servers
-	Cmd             *exec.Cmd
+	cmd             *exec.Cmd
 	isRemote        bool         // TODO: Unused for now
 	udpAddr			net.UDPAddr // the udp address of the mkw server (clients send/receive here)
 	conn			net.Conn     // connection to the mkw server's WFC listener

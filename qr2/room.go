@@ -35,72 +35,136 @@ type Room struct {
 	suspended            bool       // match making suspension state
 	canceled             bool       // whether room is canceled
 	aidLocalPlayerCounts [12]uint32 // local player counts for each player. Size is always 12, even if there isn't 12 players in the room
+
+	ticker *time.Ticker
 }
 
 func createFriendRoom(host *Player) *Room {
-	if !canPlayerCreateFriendRoom(host) {
+	if host == nil {
+		logging.Info(moduleName, "Host is nil! Can't create room!")
 		return nil
 	}
 
-	var localPlayerCounts [12]uint32
-	localPlayerCounts[0] = common.SetLocalPlayerCount(host.localPlayerCount)
+	if !canPlayerCreateFriendRoom(host) {
+		return nil
+	}
 
 	id := generateRoomID()
 	name := strconv.FormatUint(uint64(id), 16)
 
 	room := &Room{
-		roomID:               	id,
-		roomName:             	name,
-		CreateTime:           	time.Now(),
-		Region:               	common.None,
-		LastJoinIndex:        	0,
-		host:                 	host,
-		players:              	map[*Player]bool{host: true},
-		RaceNumber:           	0,
-		CourseID:             	-1,
-		EngineClassID:     	   	-1,
-		isFriendRoom:     	   	true,
-		mkwServer:       	    nil,
-		aidBitmap: 			  	0,
-		numAids:          	    0,
-		directAidBitmap: 		0,
-		aidLocalPlayerCounts: localPlayerCounts,
+		roomID:               id,
+		roomName:             name,
+		CreateTime:           time.Now(),
+		Region:               common.None,
+		LastJoinIndex:        0,
+		host:                 host,
+		players:              map[*Player]bool{host: true},
+		RaceNumber:           0,
+		CourseID:             -1,
+		EngineClassID:        -1,
+		isFriendRoom:         true,
+		mkwServer:            nil,
+		aidBitmap:            0,
+		numAids:              0,
+		directAidBitmap:      0,
+		aidLocalPlayerCounts: [12]uint32{},
 	}
 
-	mkwServer := createMKWServer(room)
+	mkwServer := startMKWServer(room)
 	if mkwServer == nil {
 		logging.Info(moduleName, "mkwServer creation failed")
 		return nil
 	}
-
-	host.addPlayerToRoom(room)
-
 	room.mkwServer = mkwServer
 
-	// room.mkwServer.addPlayer(host)
+	room.addPlayerToRoom(host)
 
+	// start broadcasting
 	go func() {
+		// not super crucial, but could look into the timer being configurable
 		ticker := time.NewTicker(1000 * time.Millisecond)
+		room.ticker = ticker
 
 		for {
 			<-ticker.C
-
 			mutex.Lock()
 			room.broadcastMatchPackets()
-
 			mutex.Unlock()
 		}
 	}()
 
 	rooms[name] = room
-
 	return room
+}
+
+func (r *Room) addPlayerToRoom(p *Player) bool {
+	if r.full() {
+		logging.Info(moduleName, "Can't join room, room is full!")
+		return false
+	}
+
+	// need to find the next available aid
+	aid, err := common.GetAvailableAid(r.aidBitmap)
+	if err != nil || aid == 0xff {
+		logging.Info(moduleName, "GetAvailableAid() errored!")
+	}
+
+	// if the room is empty, this player is the host
+	isHost := r.empty()
+
+	r.players[p] = true
+	r.aidBitmap = common.SetAid(r.aidBitmap, aid)
+	r.directAidBitmap = common.SetAid(r.directAidBitmap, aid)
+	r.numAids++
+	r.aidLocalPlayerCounts[aid] = common.SetLocalPlayerCount(p.localPlayerCount)
+
+	p.setRoomInfo(r, aid, isHost)
+
+	// send a JoinFroom message only when the joining player is a guest.
+	// This is because hosts have a different way of being established with
+	// MKW-Server in handleMessageFromMKWServer
+	if !isHost {
+		r.mkwServer.sendJoinFroom(p)
+	}
+	return true
+}
+
+func (r *Room) removePlayerFromRoom(p *Player) {
+	if p == nil {
+		logging.Info(moduleName, "Can't remove a nil player!")
+		return
+	}
+
+	if !r.players[p] {
+		logging.Info(moduleName, "Can't remove player", p.PlayerId, "from room, doesn't exist")
+		return
+	}
+
+	// check if the player leaving is the host, close room if so
+	if p == r.host {
+		logging.Info(moduleName, "Host left room. Attempting to close it!")
+		r.close()
+		return
+	}
+
+	// at this point, a guest is leaving, update the room accordingly
+	leaversAid := p.aid
+
+	r.numAids -= 1
+	r.aidLocalPlayerCounts[leaversAid] = 0
+
+	r.aidBitmap = common.ClearAid(r.aidBitmap, leaversAid)
+	r.directAidBitmap = common.ClearAid(r.directAidBitmap, leaversAid)
+
+	r.mkwServer.sendLeaveRoom(p)
+	p.resetRoomInfo()
+
+	delete(r.players, p)
 }
 
 // at this point, we've varified that friendsAddedOrOpenHost() returned true, the host is the rooms host according to both the room and player types
 func (r *Room) joinFriendRoom(guest *Player) bool {
-	// some verification before a player can join a room:
-
 	if r.suspended {
 		logging.Info(name, "Match making is suspended, cannot join currently!")
 		return false
@@ -111,18 +175,14 @@ func (r *Room) joinFriendRoom(guest *Player) bool {
 		return false
 	}
 
-	joinResult := guest.addPlayerToRoom(r)
+	joinResult := r.addPlayerToRoom(guest)
 
 	return joinResult
 }
 
 func (r *Room) broadcastMatchPackets() {
 	for p, exists := range r.players {
-		if p == nil {
-			continue
-		}
-
-		if !exists {
+		if p == nil || !exists {
 			continue
 		}
 
@@ -130,7 +190,12 @@ func (r *Room) broadcastMatchPackets() {
 			continue
 		}
 
-		err := sendToAid(r.aidBitmap, r.numAids, r.directAidBitmap, r.roomID, r.host.aid, r.suspended, r.canceled, &r.aidLocalPlayerCounts, p.aid, p.roomManagerConnnectionIndex)
+		if r.host == nil {
+			logging.Info(moduleName, "host is nil")
+			continue
+		}
+
+		err := SendToAid(r.aidBitmap, r.numAids, r.directAidBitmap, r.roomID, r.host.aid, r.suspended, r.canceled, &r.aidLocalPlayerCounts, p.aid, p.roomManagerConnnectionIndex)
 		if err != nil {
 			p.numConsecutiveRoomManagerSendErrors += 1
 		} else {
@@ -140,37 +205,60 @@ func (r *Room) broadcastMatchPackets() {
 			// gotta remove them from the room
 			logging.Info(moduleName, "Player timed out, removing from room", aurora.Cyan(p.Addr.String()), "Aid", aurora.Cyan(p.aid))
 			p.numConsecutiveRoomManagerSendErrors = 0
-			p.removeFromRoom()
+			logging.Info(moduleName, "removeFromRoom() called!!!!!!")
+			r.removePlayerFromRoom(p)
 		}
 
 	}
 }
 
-func (r *Room) removePlayer(p *Player) {
-	// check the player is in the room
-	if !r.players[p] {
+func (r *Room) close() {
+	// update the room to an 'empty state', then broadcast it.
+	// this must be done before actually deleting it since the players need to be informed
+	// after being broadcasted, the players will see the disconnected from room popup
+	r.aidBitmap = 0
+	r.numAids = 0
+	r.directAidBitmap = 0
+	r.roomID = 0
+	r.suspended = false
+	r.canceled = true
+	r.aidLocalPlayerCounts = [12]uint32{}
+
+	r.broadcastMatchPackets()
+
+	// reset the room related info for the players in the room
+	// this is necessary to allow them to join/create rooms again
+	for p, exists := range r.players {
+		if p == nil {
+			continue
+		}
+
+		if !exists {
+			continue
+		}
+
+		p.resetRoomInfo()
+	}
+
+	mkwServer := r.mkwServer
+	if mkwServer == nil {
+		logging.Info(moduleName, "Room's MKW-Server is nil, can't terminate")
 		return
 	}
 
-	r.numAids -= p.localPlayerCount
+	mkwServer.terminateProcess()
 
-	leaversAid := p.aid
-	r.aidBitmap = common.ClearAid(r.aidBitmap, leaversAid)
-	r.directAidBitmap = common.ClearAid(r.directAidBitmap, leaversAid)
-	r.aidLocalPlayerCounts[leaversAid] = 0
+	r.ticker.Stop()
 
-	// delete the room in this case
-	if p == r.host {
-		r.host = nil
-	}
-	delete(r.players, p)
+	name := r.roomName
+	delete(rooms, name)
 }
 
-func (r *Room) isEmpty() bool {
+func (r *Room) empty() bool {
 	return r.numAids == 0
 }
 
-func (r *Room) isFull() bool {
+func (r *Room) full() bool {
 	numPlayers := r.numPlayers()
 	if numPlayers > 12 {
 		// error case, this is bad
@@ -229,15 +317,6 @@ func ProcessGPStatusUpdate(profileID uint32, senderIP uint64, status string) {
 		logging.Notice(moduleName, "Sending SBCM exploit to DNS patcher client")
 		sendClientExploit(moduleName, playerCopy)
 		mutex.Lock()
-	}
-
-	if status == "0" || status == "1" || status == "3" || status == "4" {
-		player := players[senderIP]
-		if player == nil || player.roomPointer == nil {
-			return
-		}
-
-		player.removeFromRoom()
 	}
 }
 
@@ -426,12 +505,10 @@ func loadRooms() error {
 }
 
 func shutdownMKWServerServers() {
-	for _, g := range rooms {
-		if g.mkwServer != nil {
-			if g.mkwServer.Cmd != nil && g.mkwServer.Cmd.Process != nil {
-				logging.Info("QR2", "Shutting down mkw-server process for room", aurora.Cyan(g.roomName))
-				g.mkwServer.Cmd.Process.Kill()
-			}
+	for _, r := range rooms {
+		mkwServer := r.mkwServer
+		if mkwServer != nil {
+			mkwServer.terminateProcess()
 		}
 	}
 }

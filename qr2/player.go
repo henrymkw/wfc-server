@@ -7,7 +7,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 	"wwfc/common"
 	"wwfc/logging"
@@ -58,52 +57,34 @@ var (
 	mutex            = deadlock.Mutex{}
 )
 
-func (p *Player) addPlayerToRoom(r *Room) bool {
-	// check if the room just opened, is full, or has players in it
-	if r.isEmpty() {
-		r.players[p] = true
-		r.aidBitmap = common.SetAid(0, 0)
-		r.directAidBitmap = common.SetAid(0, 0)
-		r.numAids = 1
-		r.suspended = false
-		r.canceled = false
-		p.roomPointer = r
-		p.RoomName = r.roomName
-		p.aid = 0
-		p.isHost = true
-		p.suspendVote = false
-		return true
-	} else if r.isFull() {
-		return false
-	} else {
-		// need to find the next available aid
-		aid := common.GetAvailableAid(r.aidBitmap)
-
-		// check for invalid aid values and zero (host's aid)
-		if aid > 11 && aid != 0 {
-			logging.Info(name, "returned aid is invalid:", aid)
-			return false
-		}
-		// for the room, need to modify: players, aidBitmap, availableAids, numAids, aidLocalPlayerCounts
-
-		r.players[p] = true
-		r.aidBitmap = common.SetAid(r.aidBitmap, aid)
-		r.directAidBitmap = common.SetAid(r.directAidBitmap, aid)
-		r.numAids++
-		r.aidLocalPlayerCounts[aid] = common.SetLocalPlayerCount(p.localPlayerCount)
-
-		// for the player, need to modify: roomPointer, Aid, IsHost, localPlayerCount
-		p.roomPointer = r
-		p.aid = aid
-		p.isHost = false
-
-		r.mkwServer.sendAddPlayerRequest(p)
-
-		return true
+func (p *Player) setRoomInfo(r *Room, aid uint8, isHost bool) {
+	if r == nil {
+		logging.Info(moduleName, "Can't set player's room info, room is nil!")
+		return
 	}
+
+	if !r.players[p] {
+		logging.Info(moduleName, "Player not in room, can't set room info!")
+		return
+	}
+
+	p.roomPointer = r
+	p.RoomName = r.roomName
+	p.aid = aid
+	p.isHost = isHost
 }
 
-// Remove a player. Expects the global mutex to already be locked.
+// sets Player fields related to being in a room. aid, roomPointer, etc.
+func (p *Player) resetRoomInfo() {
+	p.aid = 0
+	p.isHost = false
+	p.suspendVote = false
+
+	p.roomPointer = nil
+}
+
+// Remove a player from players. Called upon leaving wfc, disconnect, power off.
+// Expects the global mutex to already be locked.
 func removePlayer(addr uint64) {
 	player := players[addr]
 	if player == nil {
@@ -112,8 +93,10 @@ func removePlayer(addr uint64) {
 
 	player.messageAckWaker.Assert()
 
-	if player.roomPointer != nil {
-		player.removeFromRoom()
+	// remove player from room if they're in one
+	room := player.roomPointer
+	if room != nil {
+		room.removePlayerFromRoom(player)
 	}
 
 	if player.login != nil {
@@ -125,51 +108,6 @@ func removePlayer(addr uint64) {
 	delete(playerBySearchID, players[addr].SearchId)
 
 	delete(players, addr)
-}
-
-// Remove player from room. Expects the global mutex to already be locked.
-func (player *Player) removeFromRoom() {
-	if player.roomPointer == nil {
-		return
-	}
-
-	room := player.roomPointer
-
-	room.removePlayer(player)
-
-	// remove if there are no players or the host is null (frooms only)
-	if room.numAids == 0 || (room.isFriendRoom && room.host == nil) {
-		logging.Notice("QR2", "Deleting room", aurora.Cyan(room.roomName))
-		if room.mkwServer != nil {
-			logging.Notice("QR2", "Terminating mkw-server process for room", aurora.Cyan(room.roomName))
-			if room.mkwServer.Cmd != nil && room.mkwServer.Cmd.Process != nil {
-				logging.Notice("QR2", "Terminating mkw-server process with PID", aurora.Cyan(room.mkwServer.Cmd.Process.Pid))
-				room.mkwServer.Cmd.Process.Signal(syscall.SIGTERM)
-			} else {
-				logging.Notice("QR2", "No mkw-server process found for room", aurora.Cyan(room.roomName))
-			}
-
-		}
-		delete(rooms, room.roomName)
-	}
-
-	for player := range room.players {
-		delete(player.Data, "+conn_"+player.Data["+joinindex"])
-	}
-
-	for field := range player.Data {
-		if strings.HasPrefix(field, "+conn_") {
-			delete(player.Data, field)
-		}
-	}
-
-	mkwServer := room.mkwServer
-	if mkwServer != nil {
-		mkwServer.sendMkwServerRemoveClient(player)
-	}
-
-	player.roomPointer = nil
-	player.RoomName = ""
 }
 
 func (p *Player) sendReliableMsgToPlayer(msg []byte) error {
@@ -385,12 +323,12 @@ func GetSearchID(addr uint64) uint64 {
 // this assumes validateBasics() has been called
 func canPlayerCreateFriendRoom(player *Player) bool {
 	if player == nil {
-		logging.Info("Room", "Player is nil, cannot create room")
+		logging.Info(moduleName, "Player is nil, cannot create room")
 		return false
 	}
 
 	if player.roomPointer != nil {
-		logging.Info("Room", "Player is already in a room, cannot create room")
+		logging.Info(moduleName, "Player is already in a room, cannot create room")
 		return false
 	}
 	return true

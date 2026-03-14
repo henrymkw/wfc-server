@@ -98,6 +98,10 @@ func HandlePacket(index uint64, data []byte, address string) {
 		}
 
 		handleJoinFroomRequest(player, req)
+	case LeaveFroom:
+		logging.Info(moduleName, "Received LeaveFroom request from", address)
+		handleLeaveFroomRequest(player)
+
 	default:
 		logging.Error(moduleName, "Unknown request type", aurora.Cyan(requestType))
 	}

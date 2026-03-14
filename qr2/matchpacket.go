@@ -3,8 +3,6 @@ package qr2
 import (
 	"wwfc/common"
 	"wwfc/logging"
-
-	"github.com/logrusorgru/aurora/v3"
 )
 
 // packet sent out to players about the state of the room
@@ -21,7 +19,7 @@ type MatchPacket struct {
 	AidLocalPlayerCounts []uint32 // local player counts for each player. Size is always 12, even if there isn't 12 players in the room
 }
 
-func sendToAid(aidBitmap uint32, numAids uint32, directAidBitmap uint32, roomId uint32, hostAid uint8, roomSuspended bool, roomCanceled bool, localPlayerCounts *[12]uint32, playerAid uint8, playerConnectionIndex uint64) error {
+func SendToAid(aidBitmap uint32, numAids uint32, directAidBitmap uint32, roomId uint32, hostAid uint8, roomSuspended bool, roomCanceled bool, localPlayerCounts *[12]uint32, playerAid uint8, playerConnectionIndex uint64) error {
 	if playerAid > 11 {
 		logging.Error(moduleName, "Invalid player aid (", playerAid, ") when sending match packet")
 		return nil
@@ -33,18 +31,6 @@ func sendToAid(aidBitmap uint32, numAids uint32, directAidBitmap uint32, roomId 
 	}
 
 	return common.SendPacket(ServerName, playerConnectionIndex, toByteSlice(aidBitmap, numAids, directAidBitmap, roomId, hostAid, roomSuspended, roomCanceled, localPlayerCounts, playerAid))
-}
-
-func (m *MatchPacket) removeAid(aid uint8) {
-	if aid > 11 {
-		logging.Error(moduleName, "Invalid aid", aurora.Yellow(aid), "when removing aid from match packet")
-		return
-	}
-
-	m.AidBitmap = common.ClearAid(m.AidBitmap, aid)
-	m.DirectAidBitmap = common.ClearAid(m.DirectAidBitmap, aid)
-	m.NumAids--
-	m.AidLocalPlayerCounts[aid] = 0
 }
 
 // pass in the receiver's aid, this allows us to set the aid for each send

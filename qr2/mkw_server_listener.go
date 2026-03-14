@@ -68,10 +68,8 @@ func handleMessageFromMKWServer(conn net.Conn, msg []byte) {
 			return
 		}
 
-		// common.SendPacket(ServerName, host.roomManagerConnnectionIndex, common.MakeMKWServerAddressPacket(mkwServer.udpAddr))
-
 		// mkw-server is good to add players and communicate with them, send an AddPlayer request
-		mkwServer.sendAddPlayerRequest(host)
+		mkwServer.sendJoinFroom(host)
 
 	case JoinFroom:
 		logging.Info(moduleName, "handling AddPlayer")

@@ -49,3 +49,13 @@ func handleJoinFroomRequest(guest *Player, request *JoinFroomRequest) {
 
 	room.joinFriendRoom(guest)
 }
+
+func handleLeaveFroomRequest(player *Player) {
+	room := player.roomPointer
+	if room == nil {
+		logging.Info(name, "Player", player.Addr.String(), "sent a LeaveFroom request when they're roomless!")
+		return
+	}
+
+	room.removePlayerFromRoom(player)
+}

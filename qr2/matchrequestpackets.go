@@ -24,6 +24,7 @@ type MatchRequestType uint8
 const (
 	OpenFroom = 0
 	JoinFroom = 1
+	LeaveFroom = 2
 )
 
 func tryParseMatchRequestHeader(data []byte) *MatchRequestHeader {
