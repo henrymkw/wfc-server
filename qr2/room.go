@@ -89,6 +89,7 @@ func createFriendRoom(host *Player) *Room {
 		for {
 			<-ticker.C
 			mutex.Lock()
+			room.updateSuspension()
 			room.broadcastMatchPackets()
 			mutex.Unlock()
 		}
@@ -153,11 +154,10 @@ func (r *Room) removePlayerFromRoom(p *Player) {
 
 	r.numAids -= 1
 	r.aidLocalPlayerCounts[leaversAid] = 0
-
 	r.aidBitmap = common.ClearAid(r.aidBitmap, leaversAid)
 	r.directAidBitmap = common.ClearAid(r.directAidBitmap, leaversAid)
-
 	r.mkwServer.sendLeaveRoom(p)
+
 	p.resetRoomInfo()
 
 	delete(r.players, p)
@@ -178,6 +178,24 @@ func (r *Room) joinFriendRoom(guest *Player) bool {
 	joinResult := r.addPlayerToRoom(guest)
 
 	return joinResult
+}
+
+// The room's suspension is only changed when all players voted for a suspension thats different than the rooms
+func (r *Room) updateSuspension() {
+	curRoomSuspension := r.suspended
+	for p, exists := range r.players {
+		if p == nil || !exists {
+			continue
+		}
+
+		// player's suspension vote is the same as the room's, return early without changing suspension
+		if p.suspendVote == curRoomSuspension {
+			return
+		}
+	}
+	// all player's suspension vote differs than the room's, flip the room's suspension
+	r.suspended = !r.suspended
+	logging.Info(moduleName, "Room", r.roomID, "changed suspension from", !r.suspended, "to", r.suspended)
 }
 
 func (r *Room) broadcastMatchPackets() {
@@ -229,11 +247,7 @@ func (r *Room) close() {
 	// reset the room related info for the players in the room
 	// this is necessary to allow them to join/create rooms again
 	for p, exists := range r.players {
-		if p == nil {
-			continue
-		}
-
-		if !exists {
+		if p == nil || !exists {
 			continue
 		}
 

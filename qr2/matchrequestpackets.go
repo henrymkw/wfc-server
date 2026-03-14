@@ -19,12 +19,18 @@ type JoinFroomRequest struct {
 	friendProfileId uint32
 }
 
+type SuspendRequest struct {
+	header         MatchRequestHeader
+	suspendRequest bool
+}
+
 type MatchRequestType uint8
 
 const (
-	OpenFroom = 0
-	JoinFroom = 1
+	OpenFroom  = 0
+	JoinFroom  = 1
 	LeaveFroom = 2
+	Suspend    = 3
 )
 
 func tryParseMatchRequestHeader(data []byte) *MatchRequestHeader {

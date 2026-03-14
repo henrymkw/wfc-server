@@ -1,6 +1,7 @@
 package qr2
 
 import (
+	"encoding/binary"
 	"math/rand"
 
 	"wwfc/common"
@@ -86,11 +87,7 @@ func HandlePacket(index uint64, data []byte, address string) {
 			return
 		}
 
-		friendProfileId, err := common.SliceOfFourToUint32(data[0x10:0x14])
-		if err != nil {
-			logging.Info(moduleName, "Failed to parse friend profile ID from JoinFroom request from", address)
-			return
-		}
+		friendProfileId := binary.BigEndian.Uint32(data[0x10:0x14])
 
 		req := &JoinFroomRequest{
 			header:          *matchRequestHeader,
@@ -101,6 +98,15 @@ func HandlePacket(index uint64, data []byte, address string) {
 	case LeaveFroom:
 		logging.Info(moduleName, "Received LeaveFroom request from", address)
 		handleLeaveFroomRequest(player)
+
+	case Suspend:
+		if len(data) != 0x18 {
+			logging.Info(moduleName, "Invalid suspend request length (should be 0x18), actual is", len(data))
+			return
+		}
+
+		suspendRequest := data[0x10] != 0
+		handleSuspendRequest(player, suspendRequest)
 
 	default:
 		logging.Error(moduleName, "Unknown request type", aurora.Cyan(requestType))

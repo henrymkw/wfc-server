@@ -43,7 +43,7 @@ type Player struct {
 
 	aid              uint8 // only set when in a room
 	isHost           bool  // only set when in a room
-	suspendVote      bool  // vote to suspend match making.
+	suspendVote 	 bool  // vote to suspend match making.
 	localPlayerCount uint32
 
 	roomManagerConnnectionIndex         uint64

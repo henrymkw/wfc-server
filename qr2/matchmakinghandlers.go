@@ -59,3 +59,13 @@ func handleLeaveFroomRequest(player *Player) {
 
 	room.removePlayerFromRoom(player)
 }
+
+func handleSuspendRequest(player *Player, requestSuspend bool) {
+	room := player.roomPointer
+	if room == nil {
+		logging.Info(moduleName, "Player", player.Addr.String(), "requested to suspend (value:", requestSuspend, ") but doesn't belong to a room")
+		return
+	}
+
+	player.suspendVote = requestSuspend
+}
