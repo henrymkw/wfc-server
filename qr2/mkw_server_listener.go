@@ -101,7 +101,7 @@ func handleCompleteMessage(completeMessage []byte, conn net.Conn) {
 		}
 		logging.Info(moduleName, "Handled OpenFroom!")
 
-	case JoinFroom:
+	case JoinFriend:
 		logging.Info(moduleName, "Handling AddPlayer")
 		if len(completeMessage) != 9 {
 			logging.Info(moduleName, "Invalid PlayerAdded msg len:", len(completeMessage))

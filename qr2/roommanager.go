@@ -85,7 +85,7 @@ func HandlePacket(index uint64, data []byte, address string) {
 		switch requestType {
 		case OpenFroom, LeaveFroom:
 			msgLen = 0x10
-		case JoinFroom, Suspend, SearchPublicRoom:
+		case JoinFriend, Suspend, SearchPublicRoom:
 			msgLen = 0x18
 		default:
 			logging.Info(moduleName, "Unknown request type sent by player", player.PlayerId, "type:", requestType)
@@ -105,15 +105,16 @@ func HandlePacket(index uint64, data []byte, address string) {
 		case OpenFroom:
 			logging.Info(moduleName, "Received OpenFroom request from", address)
 			handleOpenRoomRequest(player)
-		case JoinFroom:
+		case JoinFriend:
 			logging.Info(moduleName, "Received JoinFroom request from", address)
 
-			req := &JoinFroomRequest{
+			req := &JoinFriendRequest{
 				header:          *matchRequestHeader,
 				friendProfileId: binary.BigEndian.Uint32(msg[0x10:0x14]),
+				searchRegion:	 common.MKWServerSearchRegion(msg[0x14]),
 			}
 
-			handleJoinFroomRequest(player, req)
+			handleJoinFriendRequest(player, req)
 		case LeaveFroom:
 			logging.Info(moduleName, "Received LeaveFroom request from", address)
 			handleLeaveFroomRequest(player)
@@ -130,6 +131,9 @@ func HandlePacket(index uint64, data []byte, address string) {
 			}
 			logging.Info(moduleName, "Received SearchPublicRoom from", address)
 			handleSearchPublicRoomRequest(player, searchReq)
+
+		case JoinFriendPublicRoom:
+
 
 		default:
 			logging.Error(moduleName, "Unknown request type", aurora.Cyan(requestType))

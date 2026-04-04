@@ -19,35 +19,35 @@ func handleOpenRoomRequest(host *Player) {
 	}
 }
 
-func handleJoinFroomRequest(guest *Player, request *JoinFroomRequest) {
-	logging.Info(moduleName, "Player wants to join a private room with friend profile id", aurora.Cyan(request.friendProfileId))
+func handleJoinFriendRequest(joiner *Player, request *JoinFriendRequest) {
+	logging.Info(moduleName, "Player wants to join a private room with friend profile id", aurora.Cyan(request.friendProfileId), "and searchRegion", request.searchRegion)
 
-	hostProfileId := request.friendProfileId
+	friendProfileId := request.friendProfileId
 
-	canJoinRoom := guest.friendsAddedOrOpenHost(hostProfileId)
-
+	canJoinRoom := joiner.friendsAddedOrOpenHost(friendProfileId)
 	if !canJoinRoom {
 		return
 	}
-	// some verification before a player can join a room:
-	// - we can get the host's underlying Player
-	// - their roomPointer is non-nil and the roomPointer's host points to themhost := logins[hostProfileId].player
-
 	// shouldn't be nil if friendsAddedOrOpenHost() returned true
-	host := logins[hostProfileId].player
+	friend := logins[friendProfileId].player
 
-	room := host.roomPointer
+	room := friend.roomPointer
 	if room == nil {
 		logging.Info(moduleName, "can't join room since host has no room!")
 		return
 	}
 
-	if room.host != host {
+	if room.Region != request.searchRegion {
+		logging.Info(moduleName, "Can't join friend room due to mismatched search regions! Room's is", room.Region, "joiner's is", request.searchRegion)
+		return
+	}
+
+	if room.Region == common.Private && room.host != friend {
 		logging.Info(moduleName, "Rooms host isn't the expected host!")
 		return
 	}
 
-	room.tryAddPlayerToRoom(guest, false)
+	room.tryAddPlayerToRoom(joiner, false)
 }
 
 func handleLeaveFroomRequest(player *Player) {

@@ -14,9 +14,10 @@ type MatchRequestHeader struct {
 	searchId    uint64
 }
 
-type JoinFroomRequest struct {
+type JoinFriendRequest struct {
 	header          MatchRequestHeader
 	friendProfileId uint32
+	searchRegion	common.MKWServerSearchRegion
 }
 
 type SuspendRequest struct {
@@ -34,10 +35,11 @@ type MatchRequestType uint8
 
 const (
 	OpenFroom        = 0
-	JoinFroom        = 1
+	JoinFriend       = 1
 	LeaveFroom       = 2
 	Suspend          = 3
 	SearchPublicRoom = 4
+	JoinFriendPublicRoom = 5
 	MKWServerLog     = 0xff
 )
 

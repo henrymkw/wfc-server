@@ -93,7 +93,7 @@ func (mkwServer *MKWServer) sendJoinRoom(player *Player) error {
 	ip, port := common.IPFormatToInt(player.Addr.String())
 
 	newPlayer := NewPlayerMessage{
-		matchRequest: JoinFroom,
+		matchRequest: JoinFriend,
 		ip:           ip,
 		port:         port,
 		aid:          player.aid,

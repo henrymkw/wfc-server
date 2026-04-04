@@ -103,6 +103,7 @@ func createRoom(creator *Player, region common.MKWServerSearchRegion, gameMode c
 	}()
 
 	rooms[name] = room
+	logging.Info(moduleName, "Created room with Region", room.Region)
 	return room
 }
 
