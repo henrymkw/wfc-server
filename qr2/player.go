@@ -43,7 +43,7 @@ type Player struct {
 
 	aid              uint8 // only set when in a room
 	isHost           bool  // only set when in a room
-	suspendVote 	 bool  // vote to suspend match making.
+	suspendVote      bool  // vote to suspend match making.
 	localPlayerCount uint32
 
 	roomManagerConnnectionIndex         uint64
@@ -112,6 +112,11 @@ func removePlayer(addr uint64) {
 
 func (p *Player) sendReliableMsgToPlayer(msg []byte) error {
 	return common.SendPacket(ServerName, p.roomManagerConnnectionIndex, msg)
+}
+
+func (p *Player) setRoomManagerConnection(connectionIndex uint64, address string) {
+	p.roomManagerConnnectionIndex = connectionIndex
+	p.roomManagerAddr = address
 }
 
 // Update player data, creating the player if it doesn't exist. Returns a copy of the player data.

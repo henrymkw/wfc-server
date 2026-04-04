@@ -8,12 +8,12 @@ import (
 
 // packet sent to mkw-server informing it about a new player joining a froom
 type NewPlayerMessage struct {
-	matchRequest 	MatchRequestType // Always should be JoinFroom (1)
-	ip 				int32 // players ip
-	port			uint16 // players port
-	aid				uint8 // player's aid
-	isHost			bool // whether the player is host
-	searchId		uint64 // might not be needed?
+	matchRequest MatchRequestType // Always should be JoinFroom (1)
+	ip           int32            // players ip
+	port         uint16           // players port
+	aid          uint8            // player's aid
+	isHost       bool             // whether the player is host
+	searchId     uint64           // might not be needed?
 }
 
 func (msg *NewPlayerMessage) toBytes() []byte {
@@ -34,7 +34,7 @@ func (msg *NewPlayerMessage) toBytes() []byte {
 func MakeMKWServerAddressPacket(addr net.UDPAddr) []byte {
 	ip, port := common.IPFormatToInt(addr.String())
 
-	pb := &common.PacketBuilder{Buf: make([]byte, 0, )}
+	pb := &common.PacketBuilder{Buf: make([]byte, 0)}
 	pb.WriteUint32(0x4D4B5753) // 'MKWS', magic
 	pb.WriteInt32(ip)
 	pb.WriteUint16(port)

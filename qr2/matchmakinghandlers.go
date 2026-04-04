@@ -1,26 +1,26 @@
 package qr2
 
 import (
+	"wwfc/common"
 	"wwfc/logging"
 
 	"github.com/logrusorgru/aurora/v3"
 )
 
 // moduleName is used, want to still distinguish this in the logs
-var name = "MatchMakingRequestHandler"
 
 // request to open a private room
 func handleOpenRoomRequest(host *Player) {
 	// createFriendRoom() does room creation level validation
-	room := createFriendRoom(host)
+	room := createRoom(host, common.Private, common.None)
 	if room == nil {
-		logging.Error(name, "Failed to create room for player with id", host.PlayerId, "at address", aurora.Cyan(host.Addr))
+		logging.Error(moduleName, "Failed to create room for player with id", host.PlayerId, "at address", aurora.Cyan(host.Addr))
 		return
 	}
 }
 
 func handleJoinFroomRequest(guest *Player, request *JoinFroomRequest) {
-	logging.Info(name, "Player wants to join a private room with friend profile id", aurora.Cyan(request.friendProfileId))
+	logging.Info(moduleName, "Player wants to join a private room with friend profile id", aurora.Cyan(request.friendProfileId))
 
 	hostProfileId := request.friendProfileId
 
@@ -38,22 +38,22 @@ func handleJoinFroomRequest(guest *Player, request *JoinFroomRequest) {
 
 	room := host.roomPointer
 	if room == nil {
-		logging.Info(name, "can't join room since host has no room!")
+		logging.Info(moduleName, "can't join room since host has no room!")
 		return
 	}
 
 	if room.host != host {
-		logging.Info(name, "Rooms host isn't the expected host!")
+		logging.Info(moduleName, "Rooms host isn't the expected host!")
 		return
 	}
 
-	room.joinFriendRoom(guest)
+	room.tryAddPlayerToRoom(guest, false)
 }
 
 func handleLeaveFroomRequest(player *Player) {
 	room := player.roomPointer
 	if room == nil {
-		logging.Info(name, "Player", player.Addr.String(), "sent a LeaveFroom request when they're roomless!")
+		logging.Info(moduleName, "Player", player.Addr.String(), "sent a LeaveFroom request when they're roomless!")
 		return
 	}
 
@@ -68,4 +68,17 @@ func handleSuspendRequest(player *Player, requestSuspend bool) {
 	}
 
 	player.suspendVote = requestSuspend
+}
+
+func handleSearchPublicRoomRequest(player *Player, searchReq *SearchPublicRoomRequest) {
+	if player.roomPointer != nil {
+		logging.Info(moduleName, "Player", player.PlayerId, "requested to search for a room, but their roomPointer isn't nil")
+		return
+	}
+
+	findRoomResult := tryFindPublicRoomForPlayer(player, searchReq.region, searchReq.mode)
+	if !findRoomResult {
+		logging.Info(moduleName, "tryFindPublicRoomForPlayer() failed for player", player.PlayerId)
+		return
+	}
 }

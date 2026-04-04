@@ -28,12 +28,12 @@ type PlayerInfo struct {
 }
 
 type RoomInfo struct {
-	RoomName    string        `json:"id"`
-	CreateTime  time.Time     `json:"created"`
-	MatchType   string        `json:"type"`
-	Suspend     bool          `json:"suspend"`
-	ServerIndex string        `json:"host,omitempty"`
-	MKWRegion   common.Region `json:"rk,omitempty"`
+	RoomName    string                       `json:"id"`
+	CreateTime  time.Time                    `json:"created"`
+	MatchType   string                       `json:"type"`
+	Suspend     bool                         `json:"suspend"`
+	ServerIndex string                       `json:"host,omitempty"`
+	MKWRegion   common.MKWServerSearchRegion `json:"rk,omitempty"`
 
 	Players  map[string]PlayerInfo `json:"players"`
 	RaceInfo *RaceInfo             `json:"race,omitempty"`
@@ -61,13 +61,13 @@ func getRoomsRaw(gameNames []string, roomNames []string) []RoomInfo {
 			MatchType:       "",
 			Suspend:         true,
 			ServerIndex:     "",
-			MKWRegion:       common.None,
+			MKWRegion:       common.Private,
 			Players:         map[string]PlayerInfo{},
 			PlayersRaw:      map[string]map[string]string{},
 			SortedJoinIndex: []string{},
 		}
 
-		if room.isFriendRoom {
+		if room.Region == common.Private {
 			roomInfo.MatchType = "private"
 		} else {
 			roomInfo.MatchType = "anybody"

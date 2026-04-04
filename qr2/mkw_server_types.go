@@ -1,6 +1,7 @@
 package qr2
 
 import (
+	"bytes"
 	"fmt"
 	"math/rand"
 	"net"
@@ -14,11 +15,11 @@ import (
 
 type MKWServer struct {
 	// process of the mkw server. i think this wouldnt work for remove servers
-	cmd             *exec.Cmd
-	isRemote        bool         // TODO: Unused for now
-	udpAddr			net.UDPAddr // the udp address of the mkw server (clients send/receive here)
-	conn			net.Conn     // connection to the mkw server's WFC listener
-	roomPointer     *Room
+	cmd         *exec.Cmd
+	isRemote    bool        // TODO: Unused for now
+	udpAddr     net.UDPAddr // the udp address of the mkw server (clients send/receive here)
+	conn        net.Conn    // connection to the mkw server's WFC listener
+	roomPointer *Room
 }
 
 // key is the room address, easy for clients/rooms to lookup
@@ -108,4 +109,56 @@ func convIPToBytes(ip string) ([]byte, error) {
 		ipBytes[i] = byte(p)
 	}
 	return ipBytes, nil
+}
+
+func prefixIdx(buf []byte) int {
+	return bytes.Index(buf, []byte{0xbb, 0xef, 0xdc, 0xc8})
+}
+
+// buffer must start with 0xbb, 0xef, 0xdc, 0xc8 or be empty
+func verifyPrefix(buf []byte) bool {
+	if len(buf) == 0 || (len(buf) >= 4 && prefixIdx(buf) == 0) {
+		return true
+	}
+
+	logging.Info(moduleName, "Prefix is invalid due to nil buffer")
+	return false
+}
+
+func addMsgToBuffer(addr string, msg []byte) *[]byte {
+	buffer := mkwServerMessageBuffer[addr]
+	if buffer == nil {
+		buffer = &[]byte{}
+		mkwServerMessageBuffer[addr] = buffer
+	}
+	if len(*buffer)+len(msg) > 0x500 {
+		logging.Error(moduleName, addr, "sent a message that would overflow the buffer!")
+		delete(mkwServerMessageBuffer, addr)
+		return nil
+	}
+	combined := append(*buffer, msg...)
+	if !verifyPrefix(combined) {
+		logging.Error(moduleName, addr, "sent an invalid prefix!")
+		delete(mkwServerMessageBuffer, addr)
+		return nil
+	}
+	*buffer = combined
+	return buffer
+}
+
+// a message is complete if it contains the prefix and suffix defined in the function
+func retreiveCompleteMessageUpdateBuf(buf *[]byte) []byte {
+	bufContents := *buf
+	// returns 0 if the message starts with the prefix, needed in part to be complete
+	if prefixIdx(bufContents) != 0 {
+		return nil
+	}
+	// its not complete if the suffix can't be found
+	suffixIdx := bytes.Index(bufContents, []byte{0xce, 0xf9, 0xd3, 0xaa})
+	if suffixIdx == -1 {
+		return nil
+	}
+	// update the buffer to the next message, and return the complete message
+	*buf = (*buf)[suffixIdx+4:]
+	return bufContents[4:suffixIdx]
 }

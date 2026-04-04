@@ -32,8 +32,6 @@ func CloseConnection(index uint64) {
 }
 
 func HandlePacket(index uint64, data []byte, address string) {
-	moduleName := "RoomManager: " + address
-
 	mutexRM.RLock()
 	buffer := connBuffers[index]
 	mutexRM.RUnlock()
@@ -51,6 +49,8 @@ func HandlePacket(index uint64, data []byte, address string) {
 		}()
 	}
 
+	*buffer = append(*buffer, data...)
+
 	if len(*buffer)+len(data) > 0x1000 {
 		logging.Error(moduleName, "Buffer overflow")
 		common.CloseConnection(ServerName, index)
@@ -58,58 +58,82 @@ func HandlePacket(index uint64, data []byte, address string) {
 		return
 	}
 
-	matchRequestHeader := tryParseMatchRequestHeader(data[:16])
-	if matchRequestHeader == nil {
-		logging.Info(moduleName, "failed to parse match request header from", address)
-		return
-	}
-
-	player := validateBasics(matchRequestHeader)
-	if player == nil {
-		logging.Info(moduleName, "Player failed basic validation for match request from", address)
-		return
-	}
-
-	// TODO: Is this a good place to do this?
-	player.roomManagerConnnectionIndex = index
-	player.roomManagerAddr = address
-
-	requestType := matchRequestHeader.requestType
-
-	switch requestType {
-	case OpenFroom:
-		logging.Info(moduleName, "Received OpenFroom request from", address)
-		handleOpenRoomRequest(player)
-	case JoinFroom:
-		logging.Info(moduleName, "Received JoinFroom request from", address)
-		if len(data) != 0x18 {
-			logging.Info(moduleName, "Invalid JoinFroom request length from", address)
+	// 0x10 being the minimum size for a complete match packet (header size)
+	for len(*buffer) >= 0x10 {
+		matchRequestHeader := tryParseMatchRequestHeader((*buffer)[:0x10])
+		if matchRequestHeader == nil {
+			logging.Info(moduleName, "failed to parse match request header from", address)
 			return
 		}
 
-		friendProfileId := binary.BigEndian.Uint32(data[0x10:0x14])
-
-		req := &JoinFroomRequest{
-			header:          *matchRequestHeader,
-			friendProfileId: friendProfileId,
-		}
-
-		handleJoinFroomRequest(player, req)
-	case LeaveFroom:
-		logging.Info(moduleName, "Received LeaveFroom request from", address)
-		handleLeaveFroomRequest(player)
-
-	case Suspend:
-		if len(data) != 0x18 {
-			logging.Info(moduleName, "Invalid suspend request length (should be 0x18), actual is", len(data))
+		player := validateBasics(matchRequestHeader)
+		if player == nil {
+			logging.Info(moduleName, "Player failed basic validation for match request from", address)
+			// close connection if basic validation fails
+			common.CloseConnection(ServerName, index)
+			buffer = nil
 			return
 		}
 
-		suspendRequest := data[0x10] != 0
-		handleSuspendRequest(player, suspendRequest)
+		// store connection information needed to send messages back to the player
+		player.setRoomManagerConnection(index, address)
 
-	default:
-		logging.Error(moduleName, "Unknown request type", aurora.Cyan(requestType))
+		requestType := matchRequestHeader.requestType
+
+		// get the expected packet length for each message type
+		var msgLen int
+		switch requestType {
+		case OpenFroom, LeaveFroom:
+			msgLen = 0x10
+		case JoinFroom, Suspend, SearchPublicRoom:
+			msgLen = 0x18
+		default:
+			logging.Info(moduleName, "Unknown request type sent by player", player.PlayerId, "type:", requestType)
+			*buffer = (*buffer)[:0]
+		}
+
+		// data got cut off or message is invalid, break and wait until we recv again
+		if len(*buffer) < msgLen {
+			break
+		}
+
+		// we can process a complete message, update buffer and process the message
+		msg := (*buffer)[:msgLen]
+		*buffer = (*buffer)[msgLen:]
+
+		switch requestType {
+		case OpenFroom:
+			logging.Info(moduleName, "Received OpenFroom request from", address)
+			handleOpenRoomRequest(player)
+		case JoinFroom:
+			logging.Info(moduleName, "Received JoinFroom request from", address)
+
+			req := &JoinFroomRequest{
+				header:          *matchRequestHeader,
+				friendProfileId: binary.BigEndian.Uint32(msg[0x10:0x14]),
+			}
+
+			handleJoinFroomRequest(player, req)
+		case LeaveFroom:
+			logging.Info(moduleName, "Received LeaveFroom request from", address)
+			handleLeaveFroomRequest(player)
+
+		case Suspend:
+			suspendRequest := msg[0x10] != 0
+			handleSuspendRequest(player, suspendRequest)
+
+		case SearchPublicRoom:
+			searchReq := &SearchPublicRoomRequest{
+				header: *matchRequestHeader,
+				region: common.MKWServerSearchRegion(msg[0x10]),
+				mode:   common.MKWServerGameMode(msg[0x11]),
+			}
+			logging.Info(moduleName, "Received SearchPublicRoom from", address)
+			handleSearchPublicRoomRequest(player, searchReq)
+
+		default:
+			logging.Error(moduleName, "Unknown request type", aurora.Cyan(requestType))
+		}
 	}
 }
 

@@ -1,6 +1,7 @@
 package qr2
 
 import (
+	"errors"
 	"net"
 	"os/exec"
 	"syscall"
@@ -12,10 +13,12 @@ import (
 const moduleName = "QR2"
 
 func startMKWServer(r *Room) *MKWServer {
-	// localhost if mkw-server is to spawn on the same machine, more logic would need to be added for remote mkw-server servers
-
-	// for now just use the gamespy address
+	// for now just use the gamespy address. Only works if wfc-server and mkw-server are on the same machine
 	mkwServerIP := net.ParseIP(*common.GetConfig().GameSpyAddress)
+	if mkwServerIP == nil {
+		logging.Error(moduleName, "Failed to parse mkw-server's ip from the config. Please verify it's formatted correctly!")
+		return nil
+	}
 
 	// use a random port to be less predictable and also avoid conflicts
 	mkwServerPort, err := findOpenUDPPort(26000, 26999)
@@ -31,14 +34,13 @@ func startMKWServer(r *Room) *MKWServer {
 
 	mkwServerPath := common.GetConfig().MkwServerPath
 
-	logging.Info(moduleName, "Using mkw-server executable at", mkwServerPath)
 	cmd := exec.Command(
 		mkwServerPath,
 		"--room-addr", mkwServerAddr.String(),
 		"--wfc-addr", mkwServerListener.Addr().String(),
 	)
 
-	logging.Info(moduleName, "mkw-server cmd", cmd)
+	logging.Info(moduleName, "Running command to start mkw-server process:", cmd)
 
 	if err := cmd.Start(); err != nil {
 		logging.Error(moduleName, "Failed to start mkw-server process:", err)
@@ -65,7 +67,7 @@ func startMKWServer(r *Room) *MKWServer {
 
 	mkwServers[mkwServerPort] = mkwServer
 
-	logging.Info(moduleName, "Created mkwServer for room", r.roomName, "at", mkwServerAddr.String())
+	logging.Info(moduleName, "Created mkw-server for room", r.roomID, "at TCP port", mkwServerPort)
 
 	return mkwServer
 }
@@ -81,10 +83,10 @@ func (mkwServer *MKWServer) terminateProcess() {
 }
 
 // this will tell mkw-server to update its state since a player joined
-func (mkwServer *MKWServer) sendJoinFroom(player *Player) {
+func (mkwServer *MKWServer) sendJoinRoom(player *Player) error {
 	if player == nil {
 		logging.Info(moduleName, "sendAddPlayerRequest player is nil")
-		return
+		return errors.New("player passed into sendJoinRoom is nil!")
 	}
 
 	// pack up data into a packet
@@ -99,21 +101,25 @@ func (mkwServer *MKWServer) sendJoinFroom(player *Player) {
 		searchId:     player.SearchId,
 	}
 
-	logging.Info(moduleName, "sendAddPlayerRequest player.searchId", player.SearchId)
-
 	// send it to mkw-server
+	if mkwServer.conn == nil {
+		return errors.New("The connection to mkw-server is nil! This is bad and shouldn't happen just before sending.")
+	}
 	mkwServer.conn.Write(newPlayer.toBytes())
+	logging.Info(moduleName, "Informing MKW-Server of new player", player.PlayerId)
+
+	return nil
 }
 
 /*
 MKW Sever expects this packet structure when a player leaves (or dcs) a froom
-type LeaveFroomMessage struct {
-    Id			LeaveFroom (0x02)
-	addr		uint32
-	port 		uint16
-}
-*/
 
+	type LeaveFroomMessage struct {
+	    Id			LeaveFroom (0x02)
+		addr		uint32
+		port 		uint16
+	}
+*/
 func (mkwServer *MKWServer) sendLeaveRoom(player *Player) {
 	if mkwServer.conn == nil {
 		logging.Error(moduleName, "MkwServerInfo.WfcMkwServerConn is nil. Cannot send remove client message")

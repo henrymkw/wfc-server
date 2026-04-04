@@ -24,24 +24,32 @@ type SuspendRequest struct {
 	suspendRequest bool
 }
 
+type SearchPublicRoomRequest struct {
+	header MatchRequestHeader
+	region common.MKWServerSearchRegion
+	mode   common.MKWServerGameMode
+}
+
 type MatchRequestType uint8
 
 const (
-	OpenFroom  = 0
-	JoinFroom  = 1
-	LeaveFroom = 2
-	Suspend    = 3
+	OpenFroom        = 0
+	JoinFroom        = 1
+	LeaveFroom       = 2
+	Suspend          = 3
+	SearchPublicRoom = 4
+	MKWServerLog     = 0xff
 )
 
 func tryParseMatchRequestHeader(data []byte) *MatchRequestHeader {
-	if len(data) != 16 {
-		logging.Info(name, "Received packet with invalid length", aurora.Cyan(len(data)), "expected 16")
+	if len(data) != 0x10 {
+		logging.Info(moduleName, "Received packet with invalid length", aurora.Cyan(len(data)), "expected 16")
 		return nil
 	}
 
 	magic := data[:4]
 	if string(magic) != "MREQ" {
-		logging.Info(name, "Received packet with invalid magic", aurora.Cyan(string(magic)), "expected MREQ")
+		logging.Info(moduleName, "Received packet with invalid magic", aurora.Cyan(magic), "expected MREQ")
 		return nil
 	}
 
