@@ -82,3 +82,9 @@ func handleSearchPublicRoomRequest(player *Player, searchReq *SearchPublicRoomRe
 		return
 	}
 }
+
+func handleSetLocalPlayerCount(player *Player, lpc uint8) error {
+	err := player.setLocalPlayers(lpc)
+
+	return err
+}

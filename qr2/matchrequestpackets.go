@@ -17,7 +17,7 @@ type MatchRequestHeader struct {
 type JoinFriendRequest struct {
 	header          MatchRequestHeader
 	friendProfileId uint32
-	searchRegion	common.MKWServerSearchRegion
+	searchRegion    common.MKWServerSearchRegion
 }
 
 type SuspendRequest struct {
@@ -39,7 +39,7 @@ const (
 	LeaveFroom       = 2
 	Suspend          = 3
 	SearchPublicRoom = 4
-	JoinFriendPublicRoom = 5
+	LocalPlayerCount = 5 // No packet type, but lpc is right after the header (0x10, followed by 7 bytes of padding).
 	MKWServerLog     = 0xff
 )
 

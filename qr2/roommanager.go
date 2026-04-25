@@ -85,7 +85,7 @@ func HandlePacket(index uint64, data []byte, address string) {
 		switch requestType {
 		case OpenFroom, LeaveFroom:
 			msgLen = 0x10
-		case JoinFriend, Suspend, SearchPublicRoom:
+		case JoinFriend, Suspend, SearchPublicRoom, LocalPlayerCount:
 			msgLen = 0x18
 		default:
 			logging.Info(moduleName, "Unknown request type sent by player", player.PlayerId, "type:", requestType)
@@ -111,7 +111,7 @@ func HandlePacket(index uint64, data []byte, address string) {
 			req := &JoinFriendRequest{
 				header:          *matchRequestHeader,
 				friendProfileId: binary.BigEndian.Uint32(msg[0x10:0x14]),
-				searchRegion:	 common.MKWServerSearchRegion(msg[0x14]),
+				searchRegion:    common.MKWServerSearchRegion(msg[0x14]),
 			}
 
 			handleJoinFriendRequest(player, req)
@@ -132,8 +132,16 @@ func HandlePacket(index uint64, data []byte, address string) {
 			logging.Info(moduleName, "Received SearchPublicRoom from", address)
 			handleSearchPublicRoomRequest(player, searchReq)
 
-		case JoinFriendPublicRoom:
+		case LocalPlayerCount:
+			// Simple packet structure, just get the localPlayerCount from offset 0x10
+			localPlayerCount := msg[0x10]
 
+			logging.Info(moduleName, "Received LocalPlayerCount from", address, "where localPlayers is", localPlayerCount)
+
+			err := handleSetLocalPlayerCount(player, localPlayerCount)
+			if err != nil {
+				logging.Info(err.Error())
+			}
 
 		default:
 			logging.Error(moduleName, "Unknown request type", aurora.Cyan(requestType))

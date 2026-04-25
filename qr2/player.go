@@ -2,6 +2,7 @@ package qr2
 
 import (
 	"encoding/gob"
+	"fmt"
 	"math/rand"
 	"net"
 	"os"
@@ -41,10 +42,10 @@ type Player struct {
 	recvSearchId    bool
 	searchIdGuesses uint32 // attempt to prevent brute forcing the searchId
 
-	aid              uint8 // only set when in a room
-	isHost           bool  // only set when in a room
-	suspendVote      bool  // vote to suspend match making.
-	localPlayerCount uint32
+	aid              uint8  // only set when in a room
+	isHost           bool   // only set when in a room
+	suspendVote      bool   // vote to suspend match making.
+	localPlayerCount uint32 // 4 bytes rather than 1 since it has to be represented in little endian
 
 	roomManagerConnnectionIndex         uint64
 	roomManagerAddr                     string // address roommanager sends to
@@ -139,18 +140,17 @@ func setPlayerData(moduleName string, addr net.Addr, playerId uint32, payload ma
 	if !playerExists {
 		logging.Info(moduleName, "creating player in qr2 with addr", addr.String())
 		player = &Player{
-			PlayerId:         playerId,
-			Addr:             *addr.(*net.UDPAddr),
-			Challenge:        "",
-			Authenticated:    false,
-			LastKeepAlive:    time.Now().UTC().Unix(),
-			Data:             payload,
-			PacketCount:      0,
-			messageMutex:     &deadlock.Mutex{},
-			messageAckWaker:  &sleep.Waker{},
-			recvSearchId:     false,
-			searchIdGuesses:  0,
-			localPlayerCount: 1, // TODO: Make dynamic
+			PlayerId:        playerId,
+			Addr:            *addr.(*net.UDPAddr),
+			Challenge:       "",
+			Authenticated:   false,
+			LastKeepAlive:   time.Now().UTC().Unix(),
+			Data:            payload,
+			PacketCount:     0,
+			messageMutex:    &deadlock.Mutex{},
+			messageAckWaker: &sleep.Waker{},
+			recvSearchId:    false,
+			searchIdGuesses: 0,
 		}
 	}
 
@@ -337,6 +337,22 @@ func canPlayerCreateFriendRoom(player *Player) bool {
 		return false
 	}
 	return true
+}
+
+func (p *Player) setLocalPlayers(lpc uint8) error {
+	// Only values of 1 or two players is valid
+	if lpc != 1 && lpc != 2 {
+		return fmt.Errorf("Player %d sent in invalid player count (%d)", p.PlayerId, lpc)
+	}
+
+	// Local player count can only be set once per session. 0 is a default value to check that against.
+	if p.localPlayerCount != 0 {
+		return fmt.Errorf("Player %d already had their player count set!", p.PlayerId)
+	}
+
+	p.localPlayerCount = uint32(lpc)
+
+	return nil
 }
 
 // Save the players to a file. Expects the mutex to be locked.

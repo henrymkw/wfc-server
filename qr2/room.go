@@ -29,13 +29,12 @@ type Room struct {
 	CourseID      int
 	EngineClassID int
 
-	mkwServer            *MKWServer
-	aidBitmap            uint32     // available aid bitmap
-	numAids              uint32     // num non-guest players
-	directAidBitmap      uint32     // aid bitmap, including guests.
-	suspended            bool       // match making suspension state
-	canceled             bool       // whether room is canceled
-	aidLocalPlayerCounts [12]uint32 // local player counts for each player. Size is always 12, even if there isn't 12 players in the room
+	mkwServer       *MKWServer
+	aidBitmap       uint32 // available aid bitmap
+	numAids         uint32 // num non-guest players
+	directAidBitmap uint32 // aid bitmap, including guests.
+	suspended       bool   // match making suspension state
+	canceled        bool   // whether room is canceled
 
 	ticker *time.Ticker
 }
@@ -55,21 +54,20 @@ func createRoom(creator *Player, region common.MKWServerSearchRegion, gameMode c
 	name := strconv.FormatUint(uint64(id), 16)
 
 	room := &Room{
-		roomID:               id,
-		roomName:             name,
-		CreateTime:           time.Now(),
-		Region:               region,
-		gameMode:             gameMode,
-		LastJoinIndex:        0,
-		players:              map[*Player]bool{creator: true},
-		RaceNumber:           0,
-		CourseID:             -1,
-		EngineClassID:        -1,
-		mkwServer:            nil,
-		aidBitmap:            0,
-		numAids:              0,
-		directAidBitmap:      0,
-		aidLocalPlayerCounts: [12]uint32{},
+		roomID:          id,
+		roomName:        name,
+		CreateTime:      time.Now(),
+		Region:          region,
+		gameMode:        gameMode,
+		LastJoinIndex:   0,
+		players:         map[*Player]bool{creator: true},
+		RaceNumber:      0,
+		CourseID:        -1,
+		EngineClassID:   -1,
+		mkwServer:       nil,
+		aidBitmap:       0,
+		numAids:         0,
+		directAidBitmap: 0,
 	}
 
 	logging.Notice(moduleName, "Successfully Created room", room.roomID)
@@ -125,7 +123,6 @@ func (r *Room) tryAddPlayerToRoom(p *Player, isCreator bool) bool {
 	r.aidBitmap = common.SetAid(r.aidBitmap, aid)
 	r.directAidBitmap = common.SetAid(r.directAidBitmap, aid)
 	r.numAids++
-	r.aidLocalPlayerCounts[aid] = common.SetLocalPlayerCount(p.localPlayerCount)
 
 	// if the room private and empty, this player is the host
 	var isHost bool = false
@@ -165,7 +162,6 @@ func (r *Room) removePlayerFromRoom(p *Player) {
 	leaversAid := p.aid
 
 	r.numAids -= 1
-	r.aidLocalPlayerCounts[leaversAid] = 0
 	r.aidBitmap = common.ClearAid(r.aidBitmap, leaversAid)
 	r.directAidBitmap = common.ClearAid(r.directAidBitmap, leaversAid)
 	r.mkwServer.sendLeaveRoom(p)
@@ -243,7 +239,7 @@ func (r *Room) broadcastMatchPackets() {
 			hostAid = r.host.aid
 		}
 
-		err := SendToAid(r.aidBitmap, r.numAids, r.directAidBitmap, r.roomID, hostAid, r.suspended, r.canceled, &r.aidLocalPlayerCounts, p.aid, p.roomManagerConnnectionIndex)
+		err := SendToAid(r.aidBitmap, r.numAids, r.directAidBitmap, r.roomID, hostAid, r.suspended, r.canceled, r.localPlayerCounts(), p.aid, p.roomManagerConnnectionIndex)
 		if err != nil {
 			p.numConsecutiveRoomManagerSendErrors += 1
 		} else {
@@ -270,7 +266,6 @@ func (r *Room) close() {
 	r.roomID = 0
 	r.suspended = false
 	r.canceled = true
-	r.aidLocalPlayerCounts = [12]uint32{}
 
 	r.broadcastMatchPackets()
 
@@ -340,6 +335,21 @@ func (r *Room) numPlayers() uint32 {
 		}
 	}
 	return total
+}
+
+func (r *Room) localPlayerCounts() *[12]uint32 {
+	var ret [12]uint32
+	for p, exists := range r.players {
+		if p == nil || !exists {
+			continue
+		}
+
+		if p.localPlayerCount != 1 && p.localPlayerCount != 2 {
+			continue
+		}
+		ret[p.aid] = uint32(p.localPlayerCount << 24)
+	}
+	return &ret
 }
 
 func ProcessGPStatusUpdate(profileID uint32, senderIP uint64, status string) {
