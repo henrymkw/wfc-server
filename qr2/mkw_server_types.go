@@ -2,6 +2,7 @@ package qr2
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"math/rand"
 	"net"
@@ -9,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	"wwfc/common"
 	"wwfc/logging"
 )
 
@@ -32,25 +32,20 @@ const (
 	ServerLeaveFroomRequest = 0x03
 )
 
-func getMKWServerByPort(msg []byte) *MKWServer {
+func getMKWServerByPort(msg []byte) (*MKWServer, error) {
 	if len(msg) != 3 {
-		logging.Info(moduleName, "Invalid msg len to get mkwServer by port:", len(msg))
-		return nil
+		return nil, fmt.Errorf("Invalid msg len to get mkwServer by port:", len(msg))
 	}
 
-	port, err := common.UnpackPort(msg[1:])
-	if err != nil {
-		logging.Info(moduleName, "Server sent back a bad port")
-		return nil
-	}
+	// This is safe since we just checked the total size is 3
+	port := int(binary.BigEndian.Uint16(msg[1:]))
 
 	mkwServer := mkwServers[port]
 	if mkwServer == nil {
-		logging.Info(moduleName, "no mkwServer at port", port)
-		return nil
+		return nil, fmt.Errorf("no mkwServer at port", port)
 	}
 	logging.Info(moduleName, "found mkwServer at port:", port)
-	return mkwServers[port]
+	return mkwServer, nil
 }
 
 func findOpenUDPPort(low, high int) (int, error) {

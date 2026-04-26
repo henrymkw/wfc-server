@@ -79,9 +79,9 @@ func handleCompleteMessage(completeMessage []byte, conn net.Conn) {
 
 	case OpenFroom:
 		logging.Info(moduleName, "Handling OpenRoom")
-		mkwServer := getMKWServerByPort(completeMessage)
-		if mkwServer == nil {
-			logging.Info(moduleName, "Couldn't find mkwServer!")
+		mkwServer, err := getMKWServerByPort(completeMessage)
+		if err != nil {
+			logging.Info(moduleName, err.Error())
 			return
 		}
 		room := mkwServer.roomPointer
@@ -94,7 +94,7 @@ func handleCompleteMessage(completeMessage []byte, conn net.Conn) {
 			return
 		}
 		room.mkwServer.conn = conn
-		err := room.sendMKWServerJoinRoomForEachPlayer()
+		err = room.sendMKWServerJoinRoomForEachPlayer()
 		if err != nil {
 			logging.Info(moduleName, err)
 			return
@@ -128,9 +128,9 @@ func handleCompleteMessage(completeMessage []byte, conn net.Conn) {
 
 	case LeaveFroom:
 		logging.Info("MKW-Server Manager", "Handling CloseRoom")
-		mkwServer := getMKWServerByPort(completeMessage) // was using completedMessage before
-		if mkwServer == nil {
-			logging.Info(moduleName, "Couldn't find mkwServer!")
+		mkwServer, err := getMKWServerByPort(completeMessage) // was using completedMessage before
+		if err != nil {
+			logging.Info(moduleName, err.Error())
 			return
 		}
 		if mkwServer.conn != nil {
