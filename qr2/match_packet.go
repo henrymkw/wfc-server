@@ -11,11 +11,11 @@ import (
 const matchPacketMagic uint32 = 0x77846772 // 'MTCH'
 
 func SendToAid(aidBitmap uint32, numAids uint32, directAidBitmap uint32, roomId uint32, hostAid uint8, roomSuspended bool, roomCanceled bool, localPlayerCounts *[12]uint32, playerAid uint8, playerConnectionIndex uint64) error {
-	if playerAid > 11 {
+	if playerAid > 11 && playerAid != 0xff {
 		return fmt.Errorf("Invalid player aid (%d) when sending match packet", playerAid)
 	}
 
-	if hostAid > 11 {
+	if hostAid > 11 && hostAid != 0xff {
 		return fmt.Errorf("Invalid host aid (%d) when sending match packet", hostAid)
 	}
 

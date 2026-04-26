@@ -57,12 +57,19 @@ func handleLeaveRoomRequest(player *Player) error {
 }
 
 func handleSuspendRequest(player *Player, requestSuspend bool) error {
+	if player.suspendVote == requestSuspend {
+		return nil
+	}
+
 	room := player.roomPointer
 	if room == nil {
 		return fmt.Errorf("Player %d requested to suspend (value: %d ) but doesn't belong to a room", player.PlayerId, requestSuspend)
 	}
 
 	player.suspendVote = requestSuspend
+
+	// Try to update room suspension
+	room.updateSuspension()
 	return nil
 }
 
