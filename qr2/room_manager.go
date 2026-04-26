@@ -60,9 +60,9 @@ func HandlePacket(index uint64, data []byte, address string) {
 
 	// 0x10 being the minimum size for a complete match packet (header size)
 	for len(*buffer) >= 0x10 {
-		matchRequestHeader := tryParseMatchRequestHeader((*buffer)[:0x10])
-		if matchRequestHeader == nil {
-			logging.Info(moduleName, "failed to parse match request header from", address)
+		matchRequestHeader, err := tryParseMatchRequestHeader((*buffer)[:0x10])
+		if err != nil {
+			logging.Info(moduleName, "failed to parse match request header from", address, "error is", err.Error())
 			return
 		}
 

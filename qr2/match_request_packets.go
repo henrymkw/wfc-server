@@ -2,11 +2,9 @@ package qr2
 
 import (
 	"encoding/binary"
+	"fmt"
 
 	"wwfc/common"
-	"wwfc/logging"
-
-	"github.com/logrusorgru/aurora/v3"
 )
 
 type MatchRequestHeader struct {
@@ -45,23 +43,23 @@ const (
 	MKWServerLog     = 0xff
 )
 
-func tryParseMatchRequestHeader(data []byte) *MatchRequestHeader {
+const MatchRequestHeaderMagic uint32 = 0x77826981
+
+func tryParseMatchRequestHeader(data []byte) (*MatchRequestHeader, error) {
 	if len(data) != 0x10 {
-		logging.Info(moduleName, "Received packet with invalid length", aurora.Cyan(len(data)), "expected 16")
-		return nil
+		return nil, fmt.Errorf("Received packet with invalid length %d expected 16", len(data))
 	}
 
 	magic := data[:4]
 	if string(magic) != "MREQ" {
-		logging.Info(moduleName, "Received packet with invalid magic", aurora.Cyan(magic), "expected MREQ")
-		return nil
+		return nil, fmt.Errorf("Received packet with invalid magic (%s) expected MREQ", magic)
 	}
 
 	matchRequest := uint8(data[4])
 
 	return &MatchRequestHeader{
-		Magic:       0x77826981, // no need to be fancy about converting, we know its valid so just hardcode
+		Magic:       MatchRequestHeaderMagic,
 		requestType: MatchRequestType(matchRequest),
 		searchId:    binary.BigEndian.Uint64(data[8:16]),
-	}
+	}, nil
 }
