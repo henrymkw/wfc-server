@@ -129,7 +129,6 @@ func heartbeat(moduleName string, conn net.PacketConn, addr net.UDPAddr, buffer 
 	if player.SearchId != 0 && !player.recvSearchId && player.searchIdGuesses < 5 {
 		sendPlayerSearchId(&player)
 	}
-
 }
 
 func checkValidRating(moduleName string, payload map[string]string) string {
