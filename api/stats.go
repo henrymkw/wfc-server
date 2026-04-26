@@ -12,7 +12,7 @@ import (
 type Stats struct {
 	OnlinePlayerCount int `json:"online"`
 	ActivePlayerCount int `json:"active"`
-	GroupCount        int `json:"groups"`
+	RoomCount        int `json:"rooms"`
 }
 
 func HandleStats(w http.ResponseWriter, r *http.Request) {
@@ -32,13 +32,13 @@ func HandleStats(w http.ResponseWriter, r *http.Request) {
 
 	stats := map[string]Stats{}
 
-	servers := qr2.GetSessionServers()
-	groups := qr2.GetGroups([]string{}, []string{}, false)
+	servers := qr2.GetPlayerServers()
+	rooms := qr2.GetRooms([]string{}, []string{}, false)
 
 	globalStats := Stats{
 		OnlinePlayerCount: len(servers),
 		ActivePlayerCount: 0,
-		GroupCount:        len(groups),
+		RoomCount:        len(rooms),
 	}
 
 	for _, server := range servers {
@@ -57,14 +57,10 @@ func HandleStats(w http.ResponseWriter, r *http.Request) {
 			gameStats = Stats{
 				OnlinePlayerCount: 0,
 				ActivePlayerCount: 0,
-				GroupCount:        0,
+				RoomCount:        0,
 			}
 
-			for _, group := range groups {
-				if group.GameName == gameName {
-					gameStats.GroupCount += 1
-				}
-			}
+			gameStats.RoomCount += len(rooms)
 		}
 
 		gameStats.OnlinePlayerCount += 1

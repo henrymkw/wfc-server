@@ -20,11 +20,9 @@ import (
 	"wwfc/gpsp"
 	"wwfc/logging"
 	"wwfc/nas"
-	"wwfc/natneg"
 	"wwfc/qr2"
 	"wwfc/race"
 	"wwfc/sake"
-	"wwfc/serverbrowser"
 
 	"github.com/logrusorgru/aurora/v3"
 )
@@ -100,7 +98,7 @@ func backendMain(noSignal, noReload bool) {
 	}
 
 	wg := &sync.WaitGroup{}
-	actions := []func(bool){nas.StartServer, gpcm.StartServer, qr2.StartServer, gpsp.StartServer, serverbrowser.StartServer, race.StartServer, sake.StartServer, natneg.StartServer, api.StartServer, gamestats.StartServer}
+	actions := []func(bool){nas.StartServer, gpcm.StartServer, qr2.StartServer, gpsp.StartServer, race.StartServer, sake.StartServer, api.StartServer, gamestats.StartServer}
 	wg.Add(len(actions))
 	for _, action := range actions {
 		go func(ac func(bool)) {
@@ -163,8 +161,8 @@ func loadUuidFile() string {
 // RPCPacket.NewConnection is called by the frontend to notify the backend of a new connection
 func (r *RPCPacket) NewConnection(args RPCPacket, _ *struct{}) error {
 	switch args.Server {
-	case "serverbrowser":
-		serverbrowser.NewConnection(args.Index, args.Address)
+	case "roommanager":
+		qr2.NewConnection(args.Index, args.Address)
 	case "gpcm":
 		gpcm.NewConnection(args.Index, args.Address)
 	case "gpsp":
@@ -179,8 +177,8 @@ func (r *RPCPacket) NewConnection(args RPCPacket, _ *struct{}) error {
 // RPCPacket.HandlePacket is called by the frontend to forward a packet to the backend
 func (r *RPCPacket) HandlePacket(args RPCPacket, _ *struct{}) error {
 	switch args.Server {
-	case "serverbrowser":
-		serverbrowser.HandlePacket(args.Index, args.Data, args.Address)
+	case "roommanager":
+		qr2.HandlePacket(args.Index, args.Data, args.Address)
 	case "gpcm":
 		gpcm.HandlePacket(args.Index, args.Data)
 	case "gpsp":
@@ -195,8 +193,8 @@ func (r *RPCPacket) HandlePacket(args RPCPacket, _ *struct{}) error {
 // RPCPacket.closeConnection is called by the frontend to notify the backend of a closed connection
 func (r *RPCPacket) CloseConnection(args RPCPacket, _ *struct{}) error {
 	switch args.Server {
-	case "serverbrowser":
-		serverbrowser.CloseConnection(args.Index)
+	case "roommanager":
+		qr2.CloseConnection(args.Index)
 	case "gpcm":
 		gpcm.CloseConnection(args.Index)
 	case "gpsp":
@@ -216,7 +214,7 @@ func (r *RPCPacket) Shutdown(stateUuid string, _ *struct{}) error {
 	}
 
 	wg := &sync.WaitGroup{}
-	actions := []func(){nas.Shutdown, gpcm.Shutdown, qr2.Shutdown, gpsp.Shutdown, serverbrowser.Shutdown, race.Shutdown, sake.Shutdown, natneg.Shutdown, api.Shutdown, gamestats.Shutdown}
+	actions := []func(){nas.Shutdown, gpcm.Shutdown, qr2.Shutdown, gpsp.Shutdown, race.Shutdown, sake.Shutdown, api.Shutdown, gamestats.Shutdown}
 	wg.Add(len(actions))
 	for _, action := range actions {
 		go func(ac func()) {
@@ -301,7 +299,7 @@ func frontendMain(noSignal, noBackend bool) {
 	}
 
 	servers := []serverInfo{
-		{rpcName: "serverbrowser", protocol: "tcp", port: 28910},
+		{rpcName: "roommanager", protocol: "tcp", port: 28910},
 		{rpcName: "gpcm", protocol: "tcp", port: 29900},
 		{rpcName: "gpsp", protocol: "tcp", port: 29901},
 		{rpcName: "gamestats", protocol: "tcp", port: 29920},

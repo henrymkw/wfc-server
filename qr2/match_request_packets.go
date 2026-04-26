@@ -1,0 +1,65 @@
+package qr2
+
+import (
+	"encoding/binary"
+	"fmt"
+
+	"wwfc/common"
+)
+
+type MatchRequestHeader struct {
+	Magic       uint32 // "MREQ"
+	requestType MatchRequestType
+	padding     [3]uint8
+	searchId    uint64
+}
+
+type JoinFriendRequest struct {
+	header          MatchRequestHeader
+	friendProfileId uint32
+	searchRegion    common.MKWServerSearchRegion
+}
+
+type SuspendRequest struct {
+	header         MatchRequestHeader
+	suspendRequest bool
+}
+
+type SearchPublicRoomRequest struct {
+	header MatchRequestHeader
+	region common.MKWServerSearchRegion
+	mode   common.MKWServerGameMode
+}
+
+type MatchRequestType uint8
+
+const (
+	OpenFroom        = 0
+	JoinFriend       = 1
+	LeaveRoom        = 2
+	Suspend          = 3
+	SearchPublicRoom = 4
+	LocalPlayerCount = 5
+	MKWServerLog     = 0xff
+)
+
+const MatchRequestHeaderMagic uint32 = 0x77826981
+
+func tryParseMatchRequestHeader(data []byte) (*MatchRequestHeader, error) {
+	if len(data) != 0x10 {
+		return nil, fmt.Errorf("Received packet with invalid length %d expected 16", len(data))
+	}
+
+	magic := data[:4]
+	if string(magic) != "MREQ" {
+		return nil, fmt.Errorf("Received packet with invalid magic (%s) expected MREQ", magic)
+	}
+
+	matchRequest := uint8(data[4])
+
+	return &MatchRequestHeader{
+		Magic:       MatchRequestHeaderMagic,
+		requestType: MatchRequestType(matchRequest),
+		searchId:    binary.BigEndian.Uint64(data[8:16]),
+	}, nil
+}

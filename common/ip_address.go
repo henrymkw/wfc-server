@@ -108,3 +108,9 @@ func IsReservedIP(ip int32) bool {
 
 	return false
 }
+
+// converts an address from a string to uint64
+func MakeLookupAddr(addr string) uint64 {
+	ip, port := IPFormatToInt(addr)
+	return (uint64(port) << 32) | uint64(uint32(ip))
+}

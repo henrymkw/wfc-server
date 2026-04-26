@@ -1,18 +1,30 @@
 package qr2
 
 import (
+	"encoding/binary"
 	"net"
-	"strconv"
-	"strings"
+
+	"wwfc/common"
 	"wwfc/logging"
 )
 
+// In TCP, messages can get cut off in a single send and be incomplete. But they can be
+// completed in subsequent receives from mkw-server. We store each mkw-servers messages
+// in a buffer to be able to complete them later
+var mkwServerMessageBuffer map[string]*[]byte
+
+// key is conn.RemoteAddr().String(), which is the only unique identifier in a net.Conn
+// This is fine if wfc-server and mkw-server are on the same machine and listening to messages on localhost.
+// But this is very dangerous for remote mkw-servers, since the address could be spoofed.
+// So this map structure must be changed when remote mkw-server is implemented
+
 // MKWServerMessageListener listens for messages from MKW-Server servers
 func acceptMKWServerMessages() {
+	mkwServerMessageBuffer = make(map[string]*[]byte)
 	for {
 		conn, err := mkwServerListener.Accept()
 		if err != nil {
-			logging.Error("MKW-Server Manager", "Error accepting connection:", err)
+			logging.Error(moduleName, "Error accepting connection:", err)
 			continue
 		}
 		go readMKWServerMessage(conn)
@@ -22,150 +34,114 @@ func acceptMKWServerMessages() {
 func readMKWServerMessage(conn net.Conn) {
 	defer conn.Close()
 
-	buffer := make([]byte, 128)
+	buffer := make([]byte, 256)
 	for {
 		n, err := conn.Read(buffer)
 		if err != nil {
-			logging.Error("MKW-Server Manager", "Error reading from connection:", err)
+			logging.Error(moduleName, "Error reading from connection:", err)
 			return
 		}
-		logging.Info("MKW-Server Manager", "Read", n, "bytes from MKW-Server. buffer:", string(buffer))
 		msg := buffer[:n]
 		handleMessageFromMKWServer(conn, msg)
 	}
 }
 
 func handleMessageFromMKWServer(conn net.Conn, msg []byte) {
-	logging.Info("MKW-Server Manager", "Received message:", string(msg))
-
-	// For now, messages are simple space-separated strings
-	parts := strings.Fields(string(msg))
-
-	if len(parts) == 0 {
-		logging.Info("MKW-Server Manager", "Empty message received")
+	if len(msg) == 0 {
 		return
 	}
 
-	responceType := parts[0]
-	switch responceType {
-	case "ROOM_OPEN":
-		// ROOM_OPEN doesn't send back to clients, it just sets the udpAddr and connToMKWServer in mkwServerProxy
+	addr := conn.RemoteAddr().String()
+	buffer := addMsgToBuffer(addr, msg)
+	if buffer == nil {
+		logging.Info(moduleName, addr, "returned nil buffer")
+		return
+	}
 
-		// ROOM_OPEN {roomIp:roomPort}
-		roomAddress := parts[1]
-		logging.Info("MKW-Server Manager", "Handling ROOM_OPEN on roomAddress", roomAddress)
-
-		if mkwServerProxies[roomAddress] == nil {
-			logging.Error("MKW-Server Manager", "No active MKW Server info found for room address:", roomAddress)
-			return
+	for {
+		// note that retreiveCompleteMessage() updates the buffer if there's a complete message
+		completeMessage := retreiveCompleteMessageUpdateBuf(buffer)
+		if completeMessage == nil {
+			break
 		}
-
-		if mkwServerProxies[roomAddress].roomAddr != nil {
-			logging.Info("MKW-Server Manager", "MKWServerProxy already has roomAddr set, skipping")
-			return
+		if len(completeMessage) == 0 {
+			continue
 		}
+		handleCompleteMessage(completeMessage, conn)
+	}
+}
 
-		udpAddr, err := convertAddrToUDPAddr(roomAddress)
+func handleCompleteMessage(completeMessage []byte, conn net.Conn) {
+	var matchRequest MatchRequestType = MatchRequestType(completeMessage[0])
+	switch matchRequest {
+	case MKWServerLog:
+		logging.Notice("MKW-Server Log", string(completeMessage[1:]))
+
+	case OpenFroom:
+		logging.Info(moduleName, "Handling OpenRoom")
+		mkwServer, err := getMKWServerByPort(completeMessage)
 		if err != nil {
-			logging.Error("MKW-Server Manager", "Failed to convert ROOM_OPEN address to UDPAddr:", err)
+			logging.Info(moduleName, err.Error())
 			return
 		}
-
-		// were done once we set the room address and connection
-		mkwServerProxies[roomAddress].roomAddr = udpAddr
-		mkwServerProxies[roomAddress].connToMKWServer = conn
-
-	case "NEW_PLAYER":
-		logging.Info("MKW-Server Manager", "Handling NEW_PLAYER for", parts[1])
-
-		if len(parts) != 3 {
-			logging.Error("MKW-Server Manager", "Invalid NEW_PLAYER message format:", string(msg))
+		room := mkwServer.roomPointer
+		if room == nil {
+			logging.Info(moduleName, "mkwServer.roomPointer is nil")
 			return
 		}
-
-		// The message we get back from mkw-server is "NEW_PLAYER {clientIp:clientPort} {mkwserverIp:mkwserverPort}"
-		// We need to split parts[1] to get the client ip/port so we can send them the mkw-server address
-		playerAddr := parts[1]
-		session := sessions[makeLookupAddr(playerAddr)]
-		if session == nil {
-			logging.Error("MKW-Server Manager", "No session found for player address:", playerAddr)
+		if room.mkwServer == nil {
+			logging.Info(moduleName, "Room", room.roomID, "mkwServer is nil")
 			return
 		}
-
-		if session.groupPointer == nil {
-			logging.Error("MKW-Server Manager", "Session has no groupPointer for player address:", playerAddr)
-			return
-		}
-
-		// the mkwServerProxy should have all its fields set by now
-		mkwServerProxy := session.groupPointer.mkwServerProxy
-		if mkwServerProxy == nil {
-			logging.Error("MKW-Server Manager", "No MKWServerProxy found for session's group")
-			return
-		}
-
-		// parts[2] is the room address which the room sent itself
-		// we compare mkwServerProxy.roomAddr to ensure its the same room
-		if mkwServerProxy.roomAddr == nil {
-			logging.Error("MKW-Server Manager", "MKWServerProxy has nil roomAddr")
-			return
-		}
-		roomAddrStr := mkwServerProxy.roomAddr.String()
-		if roomAddrStr != parts[2] {
-			logging.Error("MKW-Server Manager", "MKWServerProxy roomAddr does not match NEW_PLAYER room address:", roomAddrStr, "vs", parts[2])
-			return
-		}
-		// Then we need to form the message, which starts with {0xC, 0x1, 0x0, 0x0}
-		// followed by the ip (4 bytes hex) and port (2 bytes hex) (0x0, 0x0, port high, port low) of mkw-server
-
-		message := make([]byte, 0)
-		message = append(message, 0xC)
-		message = append(message, 0x1)
-		message = append(message, 0x0)
-		message = append(message, 0x0)
-
-		mkwServerAddrSplit := strings.Split(roomAddrStr, ":")
-		if len(mkwServerAddrSplit) != 2 {
-			logging.Error("MKW-Server Manager", "Invalid NEW_PLAYER mkw-server address format:", parts[2])
-			return
-		}
-		roomIp, err := convIPToBytes(mkwServerAddrSplit[0])
+		room.mkwServer.conn = conn
+		err = room.sendMKWServerJoinRoomForEachPlayer()
 		if err != nil {
-			logging.Error("MKW-Server Manager", "Failed to convert MKW-Server IP to bytes:", err)
+			logging.Info(moduleName, err)
 			return
 		}
-		message = append(message, roomIp...)
+		logging.Info(moduleName, "Handled OpenFroom!")
 
-		mkwServerPortNum, err := strconv.Atoi(mkwServerAddrSplit[1])
+	case JoinFriend:
+		logging.Info(moduleName, "Handling AddPlayer")
+		if len(completeMessage) != 9 {
+			logging.Info(moduleName, "Invalid PlayerAdded msg len:", len(completeMessage))
+			return
+		}
+		searchId := binary.BigEndian.Uint64(completeMessage[1:])
+		logging.Info(moduleName, "AddPlayer searchId", searchId)
+		player := playerBySearchID[searchId]
+		if player == nil {
+			logging.Info(moduleName, "Couldn't find player by search id! SearchId:", searchId)
+			return
+		}
+		room := player.roomPointer
+		if room == nil {
+			logging.Info(moduleName, "Player isn't in a room!")
+			return
+		}
+		mkwServer := room.mkwServer
+		if mkwServer == nil {
+			logging.Info(moduleName, "Room's mkwServer is nil!")
+			return
+		}
+		common.SendPacket(ServerName, player.roomManagerConnnectionIndex, MakeMKWServerAddressPacket(mkwServer.udpAddr))
+
+	case LeaveRoom:
+		logging.Info("MKW-Server Manager", "Handling CloseRoom")
+		mkwServer, err := getMKWServerByPort(completeMessage) // was using completedMessage before
 		if err != nil {
-			logging.Error("MKW-Server Manager", "Invalid MKW-Server port number:", mkwServerAddrSplit[1])
+			logging.Info(moduleName, err.Error())
 			return
 		}
-		message = append(message, byte((mkwServerPortNum>>8)&0xFF))
-		message = append(message, byte(mkwServerPortNum&0xFF))
-
-		logging.Info("MKW-Server Manager", "Constructed message to send to client:", message)
-
-		// send to the client
-		masterConn.WriteTo([]byte(message), &session.Addr)
-		logging.Info("MKW-Server Manager", "Sent MKW-Server address to client at", session.Addr.String())
-
-	case "MKWSERVER_SHUTDOWN":
-		logging.Info("MKW-Server Manager", "Handling MKWServer_SHUTDOWN for", parts[1])
-
-		mkwServerProxy := mkwServerProxies[parts[1]]
-		if mkwServerProxy == nil {
-			logging.Error("MKW-Server Manager", "No active MKW Server info found for address:", parts[1])
-			return
-		}
-
-		if mkwServerProxy.connToMKWServer != nil {
-			mkwServerProxy.connToMKWServer.Close()
-			mkwServerProxy.connToMKWServer = nil
-			logging.Info("MKW-Server Manager", "Closed connToMKWServer for address:", parts[1])
+		if mkwServer.conn != nil {
+			mkwServer.conn.Close()
+			mkwServer.conn = nil
+			logging.Info(moduleName, "closed mkwServer connection with wfc-server")
 		} else {
-			logging.Info("MKW-Server Manager", "connToMKWServer already nil for address:", parts[1])
+			logging.Info("MKW-Server Manager", "connToMKWServer already nil")
 		}
 
+	default:
+		logging.Info(moduleName, "invalid matchRequest:", matchRequest)
 	}
 }

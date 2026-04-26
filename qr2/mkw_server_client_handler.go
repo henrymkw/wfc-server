@@ -1,43 +1,54 @@
 package qr2
 
 import (
-	"fmt"
-
+	"bytes"
+	"encoding/binary"
+	"errors"
+	"net"
 	"os/exec"
+	"syscall"
+
 	"wwfc/common"
 	"wwfc/logging"
 )
 
-const moduleName = "QR2 (MKW-Server Client Handler)"
+const moduleName = "QR2"
 
-func newMKWServerProxy(g *Group) *MKWServerProxy {
-	// localhost if mkw-server is to spawn on the same machine, more logic would need to be added for remote mkw-server servers
-
-	// for now just use the gamespy address
-	roomAddress := *common.GetConfig().GameSpyAddress
+func startMKWServer(r *Room) *MKWServer {
+	// for now just use the gamespy address. Only works if wfc-server and mkw-server are on the same machine
+	mkwServerIP := net.ParseIP(*common.GetConfig().GameSpyAddress)
+	if mkwServerIP == nil {
+		logging.Error(moduleName, "Failed to parse mkw-server's ip from the config. Please verify it's formatted correctly!")
+		return nil
+	}
 
 	// use a random port to be less predictable and also avoid conflicts
-	port, err := findOpenUDPPort(26000, 26999)
+	mkwServerPort, err := findOpenUDPPort(26000, 26999)
 	if err != nil {
 		logging.Error(moduleName, "Failed to find open UDP port:", err)
 		return nil
 	}
 
-	roomAddress += ":" + fmt.Sprint(port)
+	mkwServerAddr := net.UDPAddr{
+		IP:   mkwServerIP,
+		Port: mkwServerPort,
+	}
 
 	mkwServerPath := common.GetConfig().MkwServerPath
 
-	logging.Info(moduleName, "Using mkw-server executable at", mkwServerPath)
 	cmd := exec.Command(
 		mkwServerPath,
-		"--room-addr", roomAddress,
+		"--room-addr", mkwServerAddr.String(),
 		"--wfc-addr", mkwServerListener.Addr().String(),
 	)
+
+	logging.Info(moduleName, "Running command to start mkw-server process:", cmd)
 
 	if err := cmd.Start(); err != nil {
 		logging.Error(moduleName, "Failed to start mkw-server process:", err)
 		return nil
 	}
+
 	go func(c *exec.Cmd) {
 		err := c.Wait()
 		if err != nil {
@@ -48,65 +59,83 @@ func newMKWServerProxy(g *Group) *MKWServerProxy {
 		}
 	}(cmd)
 
-	mkwServer := &MKWServerProxy{
-		Cmd:             cmd,
-		isRemote:        false,
-		roomAddr:        nil, // set later by ROOM_OPEN message
-		connToMKWServer: nil, // set later by ROOM_OPEN message
-		GroupPointer:    g,
+	mkwServer := &MKWServer{
+		cmd:         cmd,
+		isRemote:    false,
+		udpAddr:     mkwServerAddr, // set later by ROOM_OPEN message
+		conn:        nil,           // set later by ROOM_OPEN message
+		roomPointer: r,
 	}
 
-	mkwServerProxies[roomAddress] = mkwServer
+	mkwServers[mkwServerPort] = mkwServer
 
-	logging.Info(moduleName, "Created new mkwServerProxy for room address", roomAddress)
+	logging.Info(moduleName, "Created mkw-server for room", r.roomID, "at TCP port", mkwServerPort)
 
 	return mkwServer
 }
 
-// this will tell mkw-server to update its state since a player joined. it will send back the address players can connect to.
-func (mkwServerProxy *MKWServerProxy) handlePlayerJoinFroomRequest(session *Session, buffer []byte) {
-	logging.Info(moduleName, "Client (", session.Addr.String(), ") ", "requested to join a room")
-
-	// client sends over {0xc, 0x2}, anything else is invalid
-	if len(buffer) < 2 || buffer[0] != 0xc || buffer[1] != 0x2 {
-		logging.Error(moduleName, "Invalid JOIN_FROOM request length")
+func (mkwServer *MKWServer) terminateProcess() {
+	if mkwServer.cmd == nil && mkwServer.cmd.Process == nil {
+		logging.Info(moduleName, "Can't terminate mkw-server process, its already nil (already terminated?)")
 		return
 	}
 
-	if mkwServerProxy.connToMKWServer == nil {
-		logging.Error(moduleName, "MkwServerInfo.WfcMkwServerConn is nil. This shouldn't happen at this point")
-		return
-	}
-
-	// message mkw-server expects is {0x2, 0x0, 0x0, 0x0} followed by the player's address
-	message := make([]byte, 0)
-	message = append(message, ServerJoinFroomRequest)
-	message = append(message, 0x0)
-	message = append(message, 0x0)
-	message = append(message, 0x0)
-	message = append(message, session.Addr.String()...)
-
-	mkwServerProxy.connToMKWServer.Write(message)
+	mkwServer.cmd.Process.Signal(syscall.SIGTERM)
+	logging.Info(moduleName, "Terminated MKW-Server process!")
 }
 
-func (mkwServerProxy *MKWServerProxy) sendMkwServerRemoveClient(session *Session) {
-	if mkwServerProxy.connToMKWServer == nil {
+// this will tell mkw-server to update its state since a player joined
+func (mkwServer *MKWServer) sendJoinRoom(player *Player) error {
+	if player == nil {
+		logging.Info(moduleName, "sendAddPlayerRequest player is nil")
+		return errors.New("player passed into sendJoinRoom is nil!")
+	}
+
+	// pack up data into a packet
+	ip, port := common.IPFormatToInt(player.Addr.String())
+
+	newPlayer := NewPlayerMessage{
+		matchRequest: JoinFriend,
+		ip:           ip,
+		port:         port,
+		aid:          player.aid,
+		isHost:       player.isHost,
+		searchId:     player.SearchId,
+	}
+
+	// send it to mkw-server
+	if mkwServer.conn == nil {
+		return errors.New("The connection to mkw-server is nil! This is bad and shouldn't happen just before sending.")
+	}
+	mkwServer.conn.Write(newPlayer.toBytes())
+	logging.Info(moduleName, "Informing MKW-Server of new player", player.PlayerId)
+
+	return nil
+}
+
+/*
+MKW Sever expects this packet structure when a player leaves (or dcs) a froom
+
+	type LeaveFroomMessage struct {
+	    Id			LeaveFroom (0x02)
+		ip 			uint32
+		port 		uint16
+	}
+*/
+func (mkwServer *MKWServer) sendLeaveRoom(player *Player) {
+	if mkwServer.conn == nil {
 		logging.Error(moduleName, "MkwServerInfo.WfcMkwServerConn is nil. Cannot send remove client message")
 		return
 	}
-
-	if session == nil {
-		logging.Error(moduleName, "Session is nil. Cannot send remove client message")
+	if player == nil {
+		logging.Error(moduleName, "player is nil. Cannot send remove client message")
 		return
 	}
-
-	// send over {0x3, 0x0, 0x0, 0x0} followed by the addr string
-	message := make([]byte, 0)
-	message = append(message, ServerLeaveFroomRequest)
-	message = append(message, 0x0)
-	message = append(message, 0x0)
-	message = append(message, 0x0)
-	message = append(message, session.Addr.String()...)
-
-	mkwServerProxy.connToMKWServer.Write(message)
+	ip, port := common.IPFormatToInt(player.Addr.String())
+	buf := new(bytes.Buffer)
+	binary.Write(buf, binary.BigEndian, uint8(LeaveRoom))
+	binary.Write(buf, binary.BigEndian, int32(ip))
+	binary.Write(buf, binary.BigEndian, port)
+	logging.Info(moduleName, "sending leave room", buf.Bytes())
+	mkwServer.conn.Write(buf.Bytes())
 }

@@ -8,7 +8,7 @@ import (
 	"wwfc/qr2"
 )
 
-func HandleGroups(w http.ResponseWriter, r *http.Request) {
+func HandleRooms(w http.ResponseWriter, r *http.Request) {
 	u, err := url.Parse(r.URL.String())
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -21,13 +21,13 @@ func HandleGroups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	groups := qr2.GetGroups(query["game"], query["id"], true)
+	rooms := qr2.GetRooms(query["game"], query["id"], true)
 
 	var jsonData []byte
-	if len(groups) == 0 {
+	if len(rooms) == 0 {
 		jsonData, _ = json.Marshal([]string{})
 	} else {
-		jsonData, err = json.Marshal(groups)
+		jsonData, err = json.Marshal(rooms)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return

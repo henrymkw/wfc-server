@@ -12,7 +12,7 @@ import (
 )
 
 func heartbeat(moduleName string, conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
-	sessionId := binary.BigEndian.Uint32(buffer[1:5])
+	playerId := binary.BigEndian.Uint32(buffer[1:5])
 	values := strings.Split(string(buffer[5:]), "\u0000")
 
 	payload := map[string]string{}
@@ -65,22 +65,22 @@ func heartbeat(moduleName string, conn net.PacketConn, addr net.UDPAddr, buffer 
 	payload["publicip"] = realIP
 	payload["publicport"] = realPort
 
-	lookupAddr := makeLookupAddr(addr.String())
+	lookupAddr := common.MakeLookupAddr(addr.String())
 
 	statechanged, ok := payload["statechanged"]
 	if ok && statechanged == "2" {
-		logging.Notice(moduleName, "Client session shutdown")
+		logging.Notice(moduleName, "Client player shutdown")
 		mutex.Lock()
-		removeSession(lookupAddr)
+		removePlayer(lookupAddr)
 		mutex.Unlock()
 		return
 	}
 
 	if ratingError := checkValidRating(moduleName, payload); ratingError != "ok" {
 		mutex.Lock()
-		session, sessionExists := sessions[lookupAddr]
-		if sessionExists && session.login != nil {
-			profileId := session.login.ProfileID
+		player, playerExists := players[lookupAddr]
+		if playerExists && player.login != nil {
+			profileId := player.login.ProfileID
 
 			mutex.Unlock()
 			gpErrorCallback(profileId, ratingError)
@@ -91,7 +91,7 @@ func heartbeat(moduleName string, conn net.PacketConn, addr net.UDPAddr, buffer 
 		}
 	}
 
-	session, ok := setSessionData(moduleName, &addr, sessionId, payload)
+	player, ok := setPlayerData(moduleName, &addr, playerId, payload)
 	if !ok {
 		return
 	}
@@ -101,40 +101,34 @@ func heartbeat(moduleName string, conn net.PacketConn, addr net.UDPAddr, buffer 
 		// This makes it possible to execute the exploit on the client sooner
 
 		mutex.Lock()
-		sessionPtr, sessionExists := sessions[lookupAddr]
-		if !sessionExists {
-			logging.Error(moduleName, "Session not found")
-		} else if sessionPtr.login == nil {
+		playerPtr, playerExists := players[lookupAddr]
+		if !playerExists {
+			logging.Error(moduleName, "Player not found")
+		} else if playerPtr.login == nil {
 			profileId := unknowns[0]
 			logging.Info(moduleName, "Attempting to use unknown as profile ID", aurora.Cyan(profileId))
-			sessionPtr.setProfileID(moduleName, profileId, "")
+			playerPtr.setProfileID(moduleName, profileId, "")
 		}
-		session = *sessionPtr
+		player = *playerPtr
 		mutex.Unlock()
 	}
 
-	if !session.Authenticated || noIP {
-		sendChallenge(conn, addr, session, lookupAddr)
+	if !player.Authenticated || noIP {
+		sendChallenge(conn, addr, player, lookupAddr)
 	}
 
-	if login := session.login; !session.ExploitReceived && login != nil && session.login.NeedsExploit {
+	if login := player.login; !player.ExploitReceived && login != nil && player.login.NeedsExploit {
 		// The version of DWC in Mario Kart DS doesn't check matching status
 		if (!noIP && statechanged == "1") || login.GameCode == "AMCE" || login.GameCode == "AMCP" || login.GameCode == "AMCJ" {
 			logging.Notice(moduleName, "Sending SBCM exploit to DNS patcher client")
-			sendClientExploit(moduleName, session)
+			sendClientExploit(moduleName, player)
 		}
 	}
 
-	mutex.Lock()
-	if session.groupPointer != nil {
-		if session.groupPointer.server == nil {
-			session.groupPointer.findNewServer()
-		} else {
-			// Update the match type if needed
-			session.groupPointer.updateMatchType()
-		}
+	// try to send the player their search id
+	if player.SearchId != 0 && !player.recvSearchId && player.searchIdGuesses < 5 {
+		sendPlayerSearchId(&player)
 	}
-	mutex.Unlock()
 }
 
 func checkValidRating(moduleName string, payload map[string]string) string {

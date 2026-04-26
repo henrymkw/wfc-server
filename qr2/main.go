@@ -60,12 +60,12 @@ func StartServer(reload bool) {
 	inShutdown = false
 
 	if reload {
-		err := loadSessions()
+		err := loadPlayers()
 		if err != nil {
 			panic(err)
 		}
 
-		logging.Notice("QR2", "Loaded", aurora.Cyan(len(sessions)), "sessions")
+		logging.Notice("QR2", "Loaded", aurora.Cyan(len(players)), "players")
 
 		err = loadLogins()
 		if err != nil {
@@ -74,12 +74,12 @@ func StartServer(reload bool) {
 
 		logging.Notice("QR2", "Loaded", aurora.Cyan(len(logins)), "logins")
 
-		err = loadGroups()
+		err = loadRooms()
 		if err != nil {
 			panic(err)
 		}
 
-		logging.Notice("QR2", "Loaded", aurora.Cyan(len(groups)), "groups")
+		logging.Notice("QR2", "Loaded", aurora.Cyan(len(rooms)), "rooms")
 	}
 
 	waitGroup.Add(1)
@@ -106,7 +106,8 @@ func StartServer(reload bool) {
 
 			waitGroup.Add(1)
 
-			go handleConnection(conn, *addr.(*net.UDPAddr), buf)
+			// changing to buf[:size] will NEED to be tested
+			go handleConnection(conn, *addr.(*net.UDPAddr), buf[:size])
 		}
 	}()
 }
@@ -121,12 +122,12 @@ func Shutdown() {
 
 	shutdownMKWServerServers()
 
-	err := saveSessions()
+	err := savePlayers()
 	if err != nil {
-		logging.Error("QR2", "Failed to save sessions:", err)
+		logging.Error("QR2", "Failed to save players:", err)
 	}
 
-	logging.Notice("QR2", "Saved", aurora.Cyan(len(sessions)), "sessions")
+	logging.Notice("QR2", "Saved", aurora.Cyan(len(players)), "players")
 
 	err = saveLogins()
 	if err != nil {
@@ -135,33 +136,38 @@ func Shutdown() {
 
 	logging.Notice("QR2", "Saved", aurora.Cyan(len(logins)), "logins")
 
-	err = saveGroups()
+	err = saveRooms()
 	if err != nil {
-		logging.Error("QR2", "Failed to save groups:", err)
+		logging.Error("QR2", "Failed to save rooms:", err)
 	}
 
-	logging.Notice("QR2", "Saved", aurora.Cyan(len(groups)), "groups")
+	logging.Notice("QR2", "Saved", aurora.Cyan(len(rooms)), "rooms")
 }
 
 func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
 	defer waitGroup.Done()
 
+	// Check if the player is trying to verify the search id and return if successful
+	if tryVerifySearchIdPacketReceipt(addr, buffer) {
+		return
+	}
+
 	packetType := buffer[0]
 	moduleName := "QR2:" + addr.String()
 
-	var session *Session
+	var player *Player
 	if packetType != HeartbeatRequest && packetType != AvailableRequest {
 		mutex.Lock()
 
 		var ok bool
-		session, ok = sessions[makeLookupAddr(addr.String())]
+		player, ok = players[common.MakeLookupAddr(addr.String())]
 		if !ok {
 			mutex.Unlock()
-			logging.Error(moduleName, "Cannot find session for this IP address")
+			logging.Error(moduleName, "Cannot find player for this IP address")
 			return
 		}
 
-		session.SessionID = binary.BigEndian.Uint32(buffer[1:5])
+		player.PlayerId = binary.BigEndian.Uint32(buffer[1:5])
 
 		mutex.Unlock()
 	}
@@ -175,12 +181,12 @@ func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
 		logging.Info(moduleName, "Command:", aurora.Yellow("CHALLENGE"))
 
 		mutex.Lock()
-		if session.Challenge != "" {
+		if player.Challenge != "" {
 			// TODO: Verify the challenge
-			session.Authenticated = true
+			player.Authenticated = true
 			mutex.Unlock()
 
-			conn.WriteTo(createResponseHeader(ClientRegisteredReply, session.SessionID), &addr)
+			conn.WriteTo(createResponseHeader(ClientRegisteredReply, player.PlayerId), &addr)
 		} else {
 			mutex.Unlock()
 		}
@@ -207,19 +213,19 @@ func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
 
 		// In case ClientExploitReply is lost, this can be checked as well
 		// This would be sent either after the payload is downloaded, or the client is already patched
-		session.ExploitReceived = true
-		if login := session.login; login != nil {
+		player.ExploitReceived = true
+		if login := player.login; login != nil {
 			login.NeedsExploit = false
 		}
 
-		session.messageAckWaker.Assert()
+		player.messageAckWaker.Assert()
 		return
 
 	case KeepAliveRequest:
 		// logging.Info(moduleName, "Command:", aurora.Yellow("KEEPALIVE"))
 		conn.WriteTo(createResponseHeader(KeepAliveRequest, 0), &addr)
 
-		session.LastKeepAlive = time.Now().UTC().Unix()
+		player.LastKeepAlive = time.Now().UTC().Unix()
 		return
 
 	case AvailableRequest:
@@ -233,41 +239,9 @@ func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
 	case ClientExploitReply:
 		logging.Info(moduleName, "Command:", aurora.Yellow("CLIENT_EXPLOIT_ACK"))
 
-		session.ExploitReceived = true
-		if login := session.login; login != nil {
+		player.ExploitReceived = true
+		if login := player.login; login != nil {
 			login.NeedsExploit = false
-		}
-
-	case MKWServerClientHandler:
-		logging.Info(moduleName, "Command:", aurora.Yellow(" MKWServerClientHandler"))
-
-		sessionAddr := makeLookupAddr(addr.String())
-		session, exists := sessions[sessionAddr]
-		if !exists {
-			logging.Error(moduleName, "No session found for MKW Server Manager packet")
-			return
-		}
-
-		group := session.groupPointer
-		if group == nil {
-			logging.Error(moduleName, "Session does not belong to a group")
-			return
-		}
-
-		playerRequestType := buffer[1]
-
-		mkwServerProxy := group.mkwServerProxy
-		if mkwServerProxy == nil {
-			logging.Error(moduleName, "Group does not have a MKWServerProxy")
-			return
-		}
-
-		switch playerRequestType {
-		case ServerJoinFroomRequest:
-			mkwServerProxy.handlePlayerJoinFroomRequest(session, buffer)
-
-		default:
-			logging.Warn(moduleName, "Unknown MKW Server Client Handler request type:", aurora.Yellow(playerRequestType))
 		}
 
 	default:
@@ -277,6 +251,6 @@ func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
 	}
 }
 
-func createResponseHeader(command byte, sessionId uint32) []byte {
-	return binary.BigEndian.AppendUint32([]byte{0xfe, 0xfd, command}, sessionId)
+func createResponseHeader(command byte, playerId uint32) []byte {
+	return binary.BigEndian.AppendUint32([]byte{0xfe, 0xfd, command}, playerId)
 }
