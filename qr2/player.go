@@ -77,7 +77,7 @@ func (p *Player) setRoomInfo(r *Room, aid uint8, isHost bool) {
 
 // sets Player fields related to being in a room. aid, roomPointer, etc.
 func (p *Player) resetRoomInfo() {
-	p.aid = 0
+	p.aid = 0xff
 	p.isHost = false
 	p.suspendVote = false
 

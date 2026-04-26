@@ -225,6 +225,9 @@ func (r *Room) broadcastMatchPackets() {
 		if r.host != nil {
 			hostAid = r.host.aid
 		}
+		if r.canceled {
+			hostAid = 0xff
+		}
 
 		err := SendToAid(r.aidBitmap, r.numAids, r.directAidBitmap, r.roomID, hostAid, r.suspended, r.canceled, r.localPlayerCounts(), p.aid, p.roomManagerConnnectionIndex)
 		if err != nil {
@@ -325,7 +328,7 @@ func (r *Room) numPlayers() uint32 {
 func (r *Room) localPlayerCounts() *[12]uint32 {
 	var ret [12]uint32
 	for p, exists := range r.players {
-		if p == nil || !exists {
+		if p == nil || !exists || p.aid > 11 {
 			continue
 		}
 
