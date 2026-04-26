@@ -147,8 +147,7 @@ func Shutdown() {
 func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
 	defer waitGroup.Done()
 
-	// this doesn't really fit the packetType switch pattern bellow, so this call
-	// is kinda awkward.
+	// Check if the player is trying to verify the search id and return if successful
 	if tryVerifySearchIdPacketReceipt(addr, buffer) {
 		return
 	}
