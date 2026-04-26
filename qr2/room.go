@@ -36,8 +36,6 @@ type Room struct {
 	directAidBitmap uint32 // aid bitmap, including guests.
 	suspended       bool   // match making suspension state
 	canceled        bool   // whether room is canceled
-
-	ticker *time.Ticker
 }
 
 func createRoom(creator *Player, region common.MKWServerSearchRegion, gameMode common.MKWServerGameMode) error {
@@ -86,21 +84,6 @@ func createRoom(creator *Player, region common.MKWServerSearchRegion, gameMode c
 		return err
 	}
 
-	// start broadcasting
-	go func() {
-		// not super crucial, but could look into the timer being configurable
-		ticker := time.NewTicker(1000 * time.Millisecond)
-		room.ticker = ticker
-
-		for {
-			<-ticker.C
-			mutex.Lock()
-			room.updateSuspension()
-			room.broadcastMatchPackets()
-			mutex.Unlock()
-		}
-	}()
-
 	rooms[name] = room
 	logging.Info(moduleName, "Created room with Region", room.Region)
 	return nil
@@ -142,6 +125,8 @@ func (r *Room) tryAddPlayerToRoom(p *Player, isCreator bool) error {
 			return fmt.Errorf("mkwServer.sendJoinRoom failed with reason %s", err.Error())
 		}
 	}
+
+	r.broadcastMatchPackets()
 	return nil
 }
 
@@ -171,6 +156,7 @@ func (r *Room) removePlayerFromRoom(p *Player) error {
 
 	delete(r.players, p)
 
+	r.broadcastMatchPackets()
 	return nil
 }
 
@@ -218,7 +204,9 @@ func (r *Room) updateSuspension() {
 		}
 	}
 	// all player's suspension vote differs than the room's, flip the room's suspension
+
 	r.suspended = !r.suspended
+	r.broadcastMatchPackets()
 	logging.Info(moduleName, "Room", r.roomID, "changed suspension from", !r.suspended, "to", r.suspended)
 }
 
@@ -266,8 +254,6 @@ func (r *Room) close() {
 	r.suspended = false
 	r.canceled = true
 
-	r.broadcastMatchPackets()
-
 	// reset the room related info for the players in the room
 	// this is necessary to allow them to join/create rooms again
 	for p, exists := range r.players {
@@ -286,7 +272,7 @@ func (r *Room) close() {
 
 	mkwServer.terminateProcess()
 
-	r.ticker.Stop()
+	r.broadcastMatchPackets()
 
 	name := r.roomName
 	delete(rooms, name)
