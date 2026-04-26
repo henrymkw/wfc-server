@@ -1,12 +1,16 @@
 package qr2
 
 import (
+	"bytes"
+	"encoding/binary"
 	"net"
 
 	"wwfc/common"
 )
 
-// packet sent to mkw-server informing it about a new player joining a froom
+const MKWServerAddressPacketMagic uint32 = 0x4D4B5753 // 'MKWS'
+
+// packet sent to mkw-server informing it about a new player joining
 type NewPlayerMessage struct {
 	matchRequest MatchRequestType // Always should be JoinFroom (1)
 	ip           int32            // players ip
@@ -17,27 +21,21 @@ type NewPlayerMessage struct {
 }
 
 func (msg *NewPlayerMessage) toBytes() []byte {
-	pb := &common.PacketBuilder{Buf: make([]byte, 0, 17)}
-
-	pb.WriteUint8(uint8(msg.matchRequest))
-	pb.WriteInt32(msg.ip)
-	pb.WriteUint16(msg.port)
-	pb.WriteUint8(msg.aid)
-	pb.WriteBool(msg.isHost)
-	pb.WriteUint64(msg.searchId)
-
-	return pb.Buf
+    buf := new(bytes.Buffer)
+    binary.Write(buf, binary.BigEndian, uint8(msg.matchRequest))
+    binary.Write(buf, binary.BigEndian, msg.ip)
+    binary.Write(buf, binary.BigEndian, msg.port)
+    binary.Write(buf, binary.BigEndian, msg.aid)
+    binary.Write(buf, binary.BigEndian, msg.isHost)
+    binary.Write(buf, binary.BigEndian, msg.searchId)
+    return buf.Bytes()
 }
 
-// Packet sent to players containing the address of mkw-server
-// its format is a 4 byte magic, 4 byte ip, 2 byte port, and 2 bytes of padding
 func MakeMKWServerAddressPacket(addr net.UDPAddr) []byte {
-	ip, port := common.IPFormatToInt(addr.String())
-
-	pb := &common.PacketBuilder{Buf: make([]byte, 0)}
-	pb.WriteUint32(0x4D4B5753) // 'MKWS', magic
-	pb.WriteInt32(ip)
-	pb.WriteUint16(port)
-
-	return pb.Buf
+    ip, port := common.IPFormatToInt(addr.String())
+    buf := new(bytes.Buffer)
+    binary.Write(buf, binary.BigEndian, MKWServerAddressPacketMagic)
+    binary.Write(buf, binary.BigEndian, ip)
+    binary.Write(buf, binary.BigEndian, port)
+    return buf.Bytes()
 }

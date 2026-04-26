@@ -1,6 +1,8 @@
 package qr2
 
 import (
+	"bytes"
+	"encoding/binary"
 	"errors"
 	"net"
 	"os/exec"
@@ -116,30 +118,24 @@ MKW Sever expects this packet structure when a player leaves (or dcs) a froom
 
 	type LeaveFroomMessage struct {
 	    Id			LeaveFroom (0x02)
-		addr		uint32
+		ip 			uint32
 		port 		uint16
 	}
 */
 func (mkwServer *MKWServer) sendLeaveRoom(player *Player) {
-	if mkwServer.conn == nil {
-		logging.Error(moduleName, "MkwServerInfo.WfcMkwServerConn is nil. Cannot send remove client message")
-		return
-	}
-
-	if player == nil {
-		logging.Error(moduleName, "player is nil. Cannot send remove client message")
-		return
-	}
-
-	ip, port := common.IPFormatToInt(player.Addr.String())
-
-	pb := &common.PacketBuilder{Buf: make([]byte, 0, 7)}
-
-	pb.WriteUint8(uint8(LeaveFroom))
-	pb.WriteInt32(ip)
-	pb.WriteUint16(port)
-
-	logging.Info(moduleName, "sending leave room", pb.Buf)
-
-	mkwServer.conn.Write(pb.Buf)
+    if mkwServer.conn == nil {
+        logging.Error(moduleName, "MkwServerInfo.WfcMkwServerConn is nil. Cannot send remove client message")
+        return
+    }
+    if player == nil {
+        logging.Error(moduleName, "player is nil. Cannot send remove client message")
+        return
+    }
+    ip, port := common.IPFormatToInt(player.Addr.String())
+    buf := new(bytes.Buffer)
+    binary.Write(buf, binary.BigEndian, uint8(LeaveFroom))
+    binary.Write(buf, binary.BigEndian, int32(ip))
+    binary.Write(buf, binary.BigEndian, port)
+    logging.Info(moduleName, "sending leave room", buf.Bytes())
+    mkwServer.conn.Write(buf.Bytes())
 }

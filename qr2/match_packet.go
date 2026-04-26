@@ -1,9 +1,14 @@
 package qr2
 
 import (
+	"bytes"
+	"encoding/binary"
+
 	"wwfc/common"
 	"wwfc/logging"
 )
+
+const matchPacketMagic uint32 = 0x77846772 // 'MTCH'
 
 // packet sent out to players about the state of the room
 type MatchPacket struct {
@@ -35,20 +40,18 @@ func SendToAid(aidBitmap uint32, numAids uint32, directAidBitmap uint32, roomId 
 
 // pass in the receiver's aid, this allows us to set the aid for each send
 func toByteSlice(aidBitmap uint32, numAids uint32, directAidBitmap uint32, roomID uint32, hostAid uint8, roomSuspended bool, roomCanceled bool, localPlayerCounts *[12]uint32, playerAid uint8) []byte {
-	pb := &common.PacketBuilder{Buf: make([]byte, 0, 48)}
-
-	pb.WriteUint32(0x77846772)
-	pb.WriteUint32(aidBitmap)
-	pb.WriteUint32(numAids)
-	pb.WriteUint32(directAidBitmap)
-	pb.WriteUint32(roomID)
-	pb.WriteUint8(playerAid)
-	pb.WriteUint8(hostAid)
-	pb.WriteBool(roomSuspended)
-	pb.WriteBool(roomCanceled)
-	for _, count := range *localPlayerCounts {
-		pb.WriteUint32(count)
-	}
-
-	return pb.Buf
+    buf := new(bytes.Buffer)
+    binary.Write(buf, binary.BigEndian, matchPacketMagic)
+    binary.Write(buf, binary.BigEndian, aidBitmap)
+    binary.Write(buf, binary.BigEndian, numAids)
+    binary.Write(buf, binary.BigEndian, directAidBitmap)
+    binary.Write(buf, binary.BigEndian, roomID)
+    binary.Write(buf, binary.BigEndian, playerAid)
+    binary.Write(buf, binary.BigEndian, hostAid)
+    binary.Write(buf, binary.BigEndian, roomSuspended)
+    binary.Write(buf, binary.BigEndian, roomCanceled)
+    for _, count := range *localPlayerCounts {
+        binary.Write(buf, binary.BigEndian, count)
+    }
+    return buf.Bytes()
 }
