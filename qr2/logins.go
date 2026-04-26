@@ -3,6 +3,7 @@ package qr2
 import (
 	"encoding/gob"
 	"os"
+	"slices"
 	"strconv"
 
 	"wwfc/common"
@@ -120,29 +121,21 @@ func loadLogins() error {
 }
 
 func AddToFriendsList(profileId uint32, friendId uint32) {
-	mutex.Lock()
-	defer mutex.Unlock()
-
-	if login, exists := logins[profileId]; exists {
-		for i := range login.friendsList {
-			if login.friendsList[i] == 0 {
-				login.friendsList[i] = friendId
-				break
-			}
-		}
-	}
+    mutex.Lock()
+    defer mutex.Unlock()
+    if login, exists := logins[profileId]; exists {
+        if i := slices.Index(login.friendsList[:], uint32(0)); i != -1 {
+            login.friendsList[i] = friendId
+        }
+    }
 }
 
 func RemoveFromFriendList(profileId uint32, friendId uint32) {
-	mutex.Lock()
-	defer mutex.Unlock()
-
-	if login, exists := logins[profileId]; exists {
-		for i := range login.friendsList {
-			if login.friendsList[i] == friendId {
-				login.friendsList[i] = 0
-				break
-			}
-		}
-	}
+    mutex.Lock()
+    defer mutex.Unlock()
+    if login, exists := logins[profileId]; exists {
+        if i := slices.Index(login.friendsList[:], friendId); i != -1 {
+            login.friendsList[i] = 0
+        }
+    }
 }
