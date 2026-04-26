@@ -109,13 +109,6 @@ func IsReservedIP(ip int32) bool {
 	return false
 }
 
-func IPFormatLookupAddrToString(lookupAddr uint64) string {
-	ip := int32(lookupAddr & 0xFFFFFFFF)
-	port := uint16((lookupAddr >> 32) & 0xFFFF)
-
-	return strconv.FormatInt(int64(ip), 10) + ":" + strconv.FormatUint(uint64(port), 10)
-}
-
 // converts an address from a string to uint64
 func MakeLookupAddr(addr string) uint64 {
 	ip, port := IPFormatToInt(addr)
