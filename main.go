@@ -20,7 +20,6 @@ import (
 	"wwfc/gpsp"
 	"wwfc/logging"
 	"wwfc/nas"
-	"wwfc/natneg"
 	"wwfc/qr2"
 	"wwfc/race"
 	"wwfc/sake"
@@ -99,7 +98,7 @@ func backendMain(noSignal, noReload bool) {
 	}
 
 	wg := &sync.WaitGroup{}
-	actions := []func(bool){nas.StartServer, gpcm.StartServer, qr2.StartServer, gpsp.StartServer, race.StartServer, sake.StartServer, natneg.StartServer, api.StartServer, gamestats.StartServer}
+	actions := []func(bool){nas.StartServer, gpcm.StartServer, qr2.StartServer, gpsp.StartServer, race.StartServer, sake.StartServer, api.StartServer, gamestats.StartServer}
 	wg.Add(len(actions))
 	for _, action := range actions {
 		go func(ac func(bool)) {
@@ -215,7 +214,7 @@ func (r *RPCPacket) Shutdown(stateUuid string, _ *struct{}) error {
 	}
 
 	wg := &sync.WaitGroup{}
-	actions := []func(){nas.Shutdown, gpcm.Shutdown, qr2.Shutdown, gpsp.Shutdown, race.Shutdown, sake.Shutdown, natneg.Shutdown, api.Shutdown, gamestats.Shutdown}
+	actions := []func(){nas.Shutdown, gpcm.Shutdown, qr2.Shutdown, gpsp.Shutdown, race.Shutdown, sake.Shutdown, api.Shutdown, gamestats.Shutdown}
 	wg.Add(len(actions))
 	for _, action := range actions {
 		go func(ac func()) {
