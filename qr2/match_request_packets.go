@@ -1,6 +1,8 @@
 package qr2
 
 import (
+	"encoding/binary"
+
 	"wwfc/common"
 	"wwfc/logging"
 
@@ -17,7 +19,7 @@ type MatchRequestHeader struct {
 type JoinFriendRequest struct {
 	header          MatchRequestHeader
 	friendProfileId uint32
-	searchRegion    common.MKWServerSearchRegion
+	searchRegion	common.MKWServerSearchRegion
 }
 
 type SuspendRequest struct {
@@ -34,13 +36,13 @@ type SearchPublicRoomRequest struct {
 type MatchRequestType uint8
 
 const (
-	OpenFroom        = 0
-	JoinFriend       = 1
-	LeaveFroom       = 2
-	Suspend          = 3
-	SearchPublicRoom = 4
-	LocalPlayerCount = 5 // No packet type, but lpc is right after the header (0x10, followed by 7 bytes of padding).
-	MKWServerLog     = 0xff
+	OpenFroom        	= 0
+	JoinFriend       	= 1
+	LeaveFroom       	= 2
+	Suspend          	= 3
+	SearchPublicRoom 	= 4
+	LocalPlayerCount	= 5
+	MKWServerLog  		= 0xff
 )
 
 func tryParseMatchRequestHeader(data []byte) *MatchRequestHeader {
@@ -60,6 +62,6 @@ func tryParseMatchRequestHeader(data []byte) *MatchRequestHeader {
 	return &MatchRequestHeader{
 		Magic:       0x77826981, // no need to be fancy about converting, we know its valid so just hardcode
 		requestType: MatchRequestType(matchRequest),
-		searchId:    common.ByteSliceToUint64(data[8:16]),
+		searchId:    binary.BigEndian.Uint64(data[8:16]),
 	}
 }
