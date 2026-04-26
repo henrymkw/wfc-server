@@ -3,7 +3,6 @@ package gpcm
 import (
 	"encoding/binary"
 	"encoding/hex"
-	// "fmt"
 	"strconv"
 	"strings"
 	"wwfc/common"
