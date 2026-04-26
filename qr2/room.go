@@ -113,15 +113,15 @@ func (r *Room) tryAddPlayerToRoom(p *Player, isCreator bool) bool {
 	}
 
 	// need to find the next available aid
-	aid, err := common.GetAvailableAid(r.aidBitmap)
+	aid, err := getAvailableAid(r.aidBitmap)
 	if err != nil || aid == 0xff {
 		logging.Info(moduleName, "GetAvailableAid() errored!")
 		return false
 	}
 
 	r.players[p] = true
-	r.aidBitmap = common.SetAid(r.aidBitmap, aid)
-	r.directAidBitmap = common.SetAid(r.directAidBitmap, aid)
+	r.aidBitmap = setAid(r.aidBitmap, aid)
+	r.directAidBitmap = setAid(r.directAidBitmap, aid)
 	r.numAids++
 
 	// if the room private and empty, this player is the host
@@ -162,8 +162,8 @@ func (r *Room) removePlayerFromRoom(p *Player) {
 	leaversAid := p.aid
 
 	r.numAids -= 1
-	r.aidBitmap = common.ClearAid(r.aidBitmap, leaversAid)
-	r.directAidBitmap = common.ClearAid(r.directAidBitmap, leaversAid)
+	r.aidBitmap = clearAid(r.aidBitmap, leaversAid)
+	r.directAidBitmap = clearAid(r.directAidBitmap, leaversAid)
 	r.mkwServer.sendLeaveRoom(p)
 
 	if r.shouldCloseRoom(p) {
