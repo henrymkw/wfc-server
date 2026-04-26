@@ -12,7 +12,7 @@ import (
 
 // request to open a private room
 func handleOpenRoomRequest(host *Player) error {
-	err := createRoom(host, common.Private, common.None)
+	err := createRoom(host, common.Private, common.Undecided)
 	if err != nil {
 		return fmt.Errorf("createRoom() failed for player %d with message %s", host.PlayerId, err.Error())
 	}
@@ -20,7 +20,7 @@ func handleOpenRoomRequest(host *Player) error {
 }
 
 func handleJoinFriendRequest(joiner *Player, request *JoinFriendRequest) error {
-	logging.Info(moduleName, "Player wants to join a private room with friend profile id", aurora.Cyan(request.friendProfileId), "and searchRegion", request.searchRegion)
+	logging.Info(moduleName, "Player wants to join a friend", aurora.Cyan(request.friendProfileId), "and searchRegion", request.searchRegion)
 
 	friendProfileId := request.friendProfileId
 
@@ -28,14 +28,14 @@ func handleJoinFriendRequest(joiner *Player, request *JoinFriendRequest) error {
 	if !canJoinRoom {
 		return fmt.Errorf("Player %d can't join friends room since they're not friends!", joiner.PlayerId)
 	}
-	// shouldn't be nil if friendsAddedOrOpenHost() returned true
-	friend := logins[friendProfileId].player
 
+	friend := logins[friendProfileId].player
 	room := friend.roomPointer
 	if room == nil {
 		return errors.New("can't join room since host has no room!")
 	}
 
+	// The bellow checks are already checked by the client. This serves as backend validation
 	if room.Region != request.searchRegion {
 		return fmt.Errorf("Can't join friend room due to mismatched search regions! Room's is region %d while joiner's is %d", room.Region, request.searchRegion)
 	}

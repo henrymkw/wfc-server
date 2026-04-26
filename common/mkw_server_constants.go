@@ -15,7 +15,7 @@ const (
 
 // Game mode clients can search for
 const (
-	None		= 0
+	Undecided	= 0
 	VS			= 1
 	Battle		= 2
 )
