@@ -40,18 +40,18 @@ func SendToAid(aidBitmap uint32, numAids uint32, directAidBitmap uint32, roomId 
 
 // pass in the receiver's aid, this allows us to set the aid for each send
 func toByteSlice(aidBitmap uint32, numAids uint32, directAidBitmap uint32, roomID uint32, hostAid uint8, roomSuspended bool, roomCanceled bool, localPlayerCounts *[12]uint32, playerAid uint8) []byte {
-    buf := new(bytes.Buffer)
-    binary.Write(buf, binary.BigEndian, matchPacketMagic)
-    binary.Write(buf, binary.BigEndian, aidBitmap)
-    binary.Write(buf, binary.BigEndian, numAids)
-    binary.Write(buf, binary.BigEndian, directAidBitmap)
-    binary.Write(buf, binary.BigEndian, roomID)
-    binary.Write(buf, binary.BigEndian, playerAid)
-    binary.Write(buf, binary.BigEndian, hostAid)
-    binary.Write(buf, binary.BigEndian, roomSuspended)
-    binary.Write(buf, binary.BigEndian, roomCanceled)
-    for _, count := range *localPlayerCounts {
-        binary.Write(buf, binary.BigEndian, count)
-    }
-    return buf.Bytes()
+	buf := new(bytes.Buffer)
+	binary.Write(buf, binary.BigEndian, matchPacketMagic)
+	binary.Write(buf, binary.BigEndian, aidBitmap)
+	binary.Write(buf, binary.BigEndian, numAids)
+	binary.Write(buf, binary.BigEndian, directAidBitmap)
+	binary.Write(buf, binary.BigEndian, roomID)
+	binary.Write(buf, binary.BigEndian, playerAid)
+	binary.Write(buf, binary.BigEndian, hostAid)
+	binary.Write(buf, binary.BigEndian, roomSuspended)
+	binary.Write(buf, binary.BigEndian, roomCanceled)
+	for _, count := range *localPlayerCounts {
+		binary.Write(buf, binary.BigEndian, count)
+	}
+	return buf.Bytes()
 }

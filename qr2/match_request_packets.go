@@ -19,7 +19,7 @@ type MatchRequestHeader struct {
 type JoinFriendRequest struct {
 	header          MatchRequestHeader
 	friendProfileId uint32
-	searchRegion	common.MKWServerSearchRegion
+	searchRegion    common.MKWServerSearchRegion
 }
 
 type SuspendRequest struct {
@@ -36,13 +36,13 @@ type SearchPublicRoomRequest struct {
 type MatchRequestType uint8
 
 const (
-	OpenFroom        	= 0
-	JoinFriend       	= 1
-	LeaveFroom       	= 2
-	Suspend          	= 3
-	SearchPublicRoom 	= 4
-	LocalPlayerCount	= 5
-	MKWServerLog  		= 0xff
+	OpenFroom        = 0
+	JoinFriend       = 1
+	LeaveRoom        = 2
+	Suspend          = 3
+	SearchPublicRoom = 4
+	LocalPlayerCount = 5
+	MKWServerLog     = 0xff
 )
 
 func tryParseMatchRequestHeader(data []byte) *MatchRequestHeader {

@@ -1,11 +1,13 @@
 package qr2
 
 import (
+	"fmt"
+
 	"wwfc/common"
 	"wwfc/logging"
 )
 
-func tryFindPublicRoomForPlayer(player *Player, region common.MKWServerSearchRegion, gameMode common.MKWServerGameMode) bool {
+func tryFindPublicRoomForPlayer(player *Player, region common.MKWServerSearchRegion, gameMode common.MKWServerGameMode) error {
 	for id, room := range rooms {
 		if id == "" || room == nil {
 			continue
@@ -38,19 +40,19 @@ func tryFindPublicRoomForPlayer(player *Player, region common.MKWServerSearchReg
 
 		// add the player to the room and return.
 		// to support vr based searches, we would need to loop through all rooms before adding players
-		addPlayerResult := room.tryAddPlayerToRoom(player, false)
-		if !addPlayerResult {
-			logging.Info(moduleName, "Room", id, "addPlayerToRoom() failed for player", player.PlayerId)
+		err := room.tryAddPlayerToRoom(player, false)
+		if err != nil {
+			return fmt.Errorf("tryAddPlayerToRoom() failed for player %d joining a room they searched for. It returned %s", player.PlayerId, err.Error())
 		}
-		return addPlayerResult
+		return nil
 	}
 
 	// if we reach here, then there are no available rooms, so create a public room with the specified region
 	logging.Info(moduleName, "No rooms specify search criteria, creating a room for Player", player.PlayerId)
-	newRoom := createRoom(player, region, gameMode)
-	if newRoom == nil {
-		logging.Info(moduleName, "Player", player.PlayerId, "failed to create a public room of region", region)
+	err := createRoom(player, region, gameMode)
+	if err != nil {
+		return fmt.Errorf("Player %d failed to create a public room. createRoom() returned %s", player.PlayerId, err.Error())
 	}
-	return newRoom != nil
+	return nil
 
 }

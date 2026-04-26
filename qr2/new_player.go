@@ -21,21 +21,21 @@ type NewPlayerMessage struct {
 }
 
 func (msg *NewPlayerMessage) toBytes() []byte {
-    buf := new(bytes.Buffer)
-    binary.Write(buf, binary.BigEndian, uint8(msg.matchRequest))
-    binary.Write(buf, binary.BigEndian, msg.ip)
-    binary.Write(buf, binary.BigEndian, msg.port)
-    binary.Write(buf, binary.BigEndian, msg.aid)
-    binary.Write(buf, binary.BigEndian, msg.isHost)
-    binary.Write(buf, binary.BigEndian, msg.searchId)
-    return buf.Bytes()
+	buf := new(bytes.Buffer)
+	binary.Write(buf, binary.BigEndian, uint8(msg.matchRequest))
+	binary.Write(buf, binary.BigEndian, msg.ip)
+	binary.Write(buf, binary.BigEndian, msg.port)
+	binary.Write(buf, binary.BigEndian, msg.aid)
+	binary.Write(buf, binary.BigEndian, msg.isHost)
+	binary.Write(buf, binary.BigEndian, msg.searchId)
+	return buf.Bytes()
 }
 
 func MakeMKWServerAddressPacket(addr net.UDPAddr) []byte {
-    ip, port := common.IPFormatToInt(addr.String())
-    buf := new(bytes.Buffer)
-    binary.Write(buf, binary.BigEndian, MKWServerAddressPacketMagic)
-    binary.Write(buf, binary.BigEndian, ip)
-    binary.Write(buf, binary.BigEndian, port)
-    return buf.Bytes()
+	ip, port := common.IPFormatToInt(addr.String())
+	buf := new(bytes.Buffer)
+	binary.Write(buf, binary.BigEndian, MKWServerAddressPacketMagic)
+	binary.Write(buf, binary.BigEndian, ip)
+	binary.Write(buf, binary.BigEndian, port)
+	return buf.Bytes()
 }

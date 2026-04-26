@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/gob"
 	"errors"
+	"fmt"
 	"os"
 	"strconv"
 
@@ -39,15 +40,13 @@ type Room struct {
 	ticker *time.Ticker
 }
 
-func createRoom(creator *Player, region common.MKWServerSearchRegion, gameMode common.MKWServerGameMode) *Room {
+func createRoom(creator *Player, region common.MKWServerSearchRegion, gameMode common.MKWServerGameMode) error {
 	if creator == nil {
-		logging.Info(moduleName, "Creator (player creating the room) is nil! Can't create room!")
-		return nil
+		return errors.New("Creator (player creating the room) is nil! Can't create room!")
 	}
 
 	if !canPlayerCreateFriendRoom(creator) {
-		logging.Info(moduleName, "canPlayerCreateFriendRoom() failed for player", creator.PlayerId)
-		return nil
+		return fmt.Errorf("canPlayerCreateFriendRoom() failed for player %d", creator.PlayerId)
 	}
 
 	id := generateRoomID()
@@ -79,11 +78,13 @@ func createRoom(creator *Player, region common.MKWServerSearchRegion, gameMode c
 
 	room.mkwServer = startMKWServer(room)
 	if room.mkwServer == nil {
-		logging.Info(moduleName, "mkw-server process failed to start for room", room.roomID)
-		return nil
+		return fmt.Errorf("mkw-server process failed to start for room", room.roomID)
 	}
 
-	room.tryAddPlayerToRoom(creator, true)
+	err := room.tryAddPlayerToRoom(creator, true)
+	if err != nil {
+		return err
+	}
 
 	// start broadcasting
 	go func() {
@@ -102,21 +103,19 @@ func createRoom(creator *Player, region common.MKWServerSearchRegion, gameMode c
 
 	rooms[name] = room
 	logging.Info(moduleName, "Created room with Region", room.Region)
-	return room
+	return nil
 }
 
 // at this point, we've varified that friendsAddedOrOpenHost() returned true, the host is the rooms host according to both the room and player types
-func (r *Room) tryAddPlayerToRoom(p *Player, isCreator bool) bool {
+func (r *Room) tryAddPlayerToRoom(p *Player, isCreator bool) error {
 	if !r.joinable() {
-		logging.Info(moduleName, "Room isn't joinable currently!")
-		return false
+		return errors.New("Room isn't joinable currently!")
 	}
 
 	// need to find the next available aid
 	aid, err := getAvailableAid(r.aidBitmap)
 	if err != nil || aid == 0xff {
-		logging.Info(moduleName, "GetAvailableAid() errored!")
-		return false
+		return errors.New("getAvailableAid() errored!")
 	}
 
 	r.players[p] = true
@@ -140,22 +139,20 @@ func (r *Room) tryAddPlayerToRoom(p *Player, isCreator bool) bool {
 	if !isCreator {
 		err := r.mkwServer.sendJoinRoom(p)
 		if err != nil {
-			logging.Info(moduleName, "sendJoinRoom failed with reason", err)
-			return false
+			return fmt.Errorf("mkwServer.sendJoinRoom failed with reason %s", err.Error())
 		}
 	}
-	return true
+	return nil
 }
 
-func (r *Room) removePlayerFromRoom(p *Player) {
+func (r *Room) removePlayerFromRoom(p *Player) error {
 	if p == nil {
-		logging.Info(moduleName, "Can't remove a nil player!")
-		return
+		return errors.New("Can't remove a nil player!")
 	}
 
 	if !r.players[p] {
-		logging.Info(moduleName, "Can't remove player", p.PlayerId, "from room, doesn't exist")
-		return
+		return fmt.Errorf("Can't remove player %d from room, doesn't exist", p.PlayerId)
+
 	}
 
 	// at this point, a guest is leaving, update the room accordingly
@@ -173,6 +170,8 @@ func (r *Room) removePlayerFromRoom(p *Player) {
 	p.resetRoomInfo()
 
 	delete(r.players, p)
+
+	return nil
 }
 
 func (r *Room) shouldCloseRoom(leavingPlayer *Player) bool {

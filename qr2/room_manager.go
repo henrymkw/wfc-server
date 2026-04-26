@@ -83,7 +83,7 @@ func HandlePacket(index uint64, data []byte, address string) {
 		// get the expected packet length for each message type
 		var msgLen int
 		switch requestType {
-		case OpenFroom, LeaveFroom:
+		case OpenFroom, LeaveRoom:
 			msgLen = 0x10
 		case JoinFriend, Suspend, SearchPublicRoom, LocalPlayerCount:
 			msgLen = 0x18
@@ -103,8 +103,12 @@ func HandlePacket(index uint64, data []byte, address string) {
 
 		switch requestType {
 		case OpenFroom:
-			logging.Info(moduleName, "Received OpenFroom request from", address)
-			handleOpenRoomRequest(player)
+			logging.Info(moduleName, "Received OpenRoom request from", address)
+			err := handleOpenRoomRequest(player)
+			if err != nil {
+				logging.Info(moduleName, err.Error())
+			}
+
 		case JoinFriend:
 			logging.Info(moduleName, "Received JoinFroom request from", address)
 
@@ -114,14 +118,23 @@ func HandlePacket(index uint64, data []byte, address string) {
 				searchRegion:    common.MKWServerSearchRegion(msg[0x14]),
 			}
 
-			handleJoinFriendRequest(player, req)
-		case LeaveFroom:
-			logging.Info(moduleName, "Received LeaveFroom request from", address)
-			handleLeaveFroomRequest(player)
+			err := handleJoinFriendRequest(player, req)
+			if err != nil {
+				logging.Info(moduleName, "JoinFriend failed. Reason:", err.Error())
+			}
+		case LeaveRoom:
+			logging.Info(moduleName, "Received LeaveRoom request from", address)
+			err := handleLeaveRoomRequest(player)
+			if err != nil {
+				logging.Info(moduleName, "LeaveRoom failed for reason:", err.Error())
+			}
 
 		case Suspend:
 			suspendRequest := msg[0x10] != 0
-			handleSuspendRequest(player, suspendRequest)
+			err := handleSuspendRequest(player, suspendRequest)
+			if err != nil {
+				logging.Info(moduleName, "Suspend failed for reason:", err.Error())
+			}
 
 		case SearchPublicRoom:
 			searchReq := &SearchPublicRoomRequest{
@@ -130,7 +143,10 @@ func HandlePacket(index uint64, data []byte, address string) {
 				mode:   common.MKWServerGameMode(msg[0x11]),
 			}
 			logging.Info(moduleName, "Received SearchPublicRoom from", address)
-			handleSearchPublicRoomRequest(player, searchReq)
+			err := handleSearchPublicRoomRequest(player, searchReq)
+			if err != nil {
+				logging.Info(moduleName, "SearchPublicRoom failed with reason:", err.Error())
+			}
 
 		case LocalPlayerCount:
 			// Simple packet structure, just get the localPlayerCount from offset 0x10
@@ -140,7 +156,7 @@ func HandlePacket(index uint64, data []byte, address string) {
 
 			err := handleSetLocalPlayerCount(player, localPlayerCount)
 			if err != nil {
-				logging.Info(err.Error())
+				logging.Info(moduleName, err.Error())
 			}
 
 		default:

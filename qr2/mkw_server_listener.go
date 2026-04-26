@@ -126,7 +126,7 @@ func handleCompleteMessage(completeMessage []byte, conn net.Conn) {
 		}
 		common.SendPacket(ServerName, player.roomManagerConnnectionIndex, MakeMKWServerAddressPacket(mkwServer.udpAddr))
 
-	case LeaveFroom:
+	case LeaveRoom:
 		logging.Info("MKW-Server Manager", "Handling CloseRoom")
 		mkwServer, err := getMKWServerByPort(completeMessage) // was using completedMessage before
 		if err != nil {

@@ -1,8 +1,8 @@
 package qr2
 
 import (
-	"math/bits"
 	"errors"
+	"math/bits"
 )
 
 func aidSlot(aid uint8) uint32 {
@@ -19,9 +19,9 @@ func clearAid(aids uint32, aid uint8) uint32 {
 
 func getAvailableAid(aidBitmap uint32) (uint8, error) {
 	// Flip all bits, the first 1 found is the available aid
-    aid := bits.TrailingZeros32(^aidBitmap)
-    if aid >= 12 {
-        return 0xff, errors.New("No available aid!")
-    }
-    return uint8(aid), nil
+	aid := bits.TrailingZeros32(^aidBitmap)
+	if aid >= 12 {
+		return 0xff, errors.New("No available aid!")
+	}
+	return uint8(aid), nil
 }
