@@ -26,25 +26,15 @@ func tryFindPublicRoomForPlayer(player *Player, region common.MKWServerSearchReg
 			continue
 		}
 
-		// continue if room is full, is suspended, or canceled
-		if room.full() || room.suspended || room.canceled {
-			continue
-		}
-
-		if room.mkwServer == nil {
-			logging.Info(moduleName, "Room", room.roomID, "has a nil mkwServer for some reason (shouldn't happen)")
-			continue
-		}
-
 		logging.Info(moduleName, "Found a public room Player", player.PlayerId, "can join!")
 
-		// add the player to the room and return.
 		// to support vr based searches, we would need to loop through all rooms before adding players
 		err := room.tryAddPlayerToRoom(player, false)
 		if err != nil {
-			return fmt.Errorf("tryAddPlayerToRoom() failed for player %d joining a room they searched for. It returned %s", player.PlayerId, err.Error())
+			logging.Info(moduleName, "tryFindPublicRoomForPlayer(): %s", err.Error(), "Continuing room search")
+			continue
+
 		}
-		return nil
 	}
 
 	// if we reach here, then there are no available rooms, so create a public room with the specified region

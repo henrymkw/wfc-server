@@ -111,6 +111,10 @@ func removePlayer(addr uint64) {
 	delete(players, addr)
 }
 
+func (p *Player) localPlayerCountOk() bool {
+	return p.localPlayerCount == 1 || p.localPlayerCount == 2
+}
+
 func (p *Player) sendReliableMsgToPlayer(msg []byte) error {
 	return common.SendPacket(ServerName, p.roomManagerConnnectionIndex, msg)
 }

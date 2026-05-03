@@ -16,6 +16,8 @@ import (
 	"github.com/logrusorgru/aurora/v3"
 )
 
+const MaxPlayerCount = 12
+
 type Room struct {
 	roomID        uint32
 	roomName      string
@@ -91,8 +93,9 @@ func createRoom(creator *Player, region common.MKWServerSearchRegion, gameMode c
 
 // at this point, we've varified that friendsAddedOrOpenHost() returned true, the host is the rooms host according to both the room and player types
 func (r *Room) tryAddPlayerToRoom(p *Player, isCreator bool) error {
-	if !r.joinable() {
-		return errors.New("Room isn't joinable currently!")
+	err := r.cantJoin(p.localPlayerCount)
+	if err != nil {
+		return fmt.Errorf("Player %d couldn't be added to room %d for reason: %s.", p.PlayerId, r.roomID, err.Error())
 	}
 
 	// need to find the next available aid
@@ -185,9 +188,27 @@ func (r *Room) shouldCloseRoom(leavingPlayer *Player) bool {
 	return false
 }
 
-func (r *Room) joinable() bool {
-	// room is joinable if its not full, mm is unsuspended, and not canceled
-	return !r.full() && !r.suspended && !r.canceled
+func (r *Room) cantJoin(localPlayerCount uint32) error {
+	if r.full() {
+		return errors.New("Room is full")
+	}
+
+	if r.suspended {
+		return errors.New("Room is suspended")
+	}
+
+	if r.canceled {
+		return errors.New("Room is canceled")
+	}
+
+	if r.numPlayers()+localPlayerCount > MaxPlayerCount {
+		return errors.New("Room would be over capacity")
+	}
+
+	if r.mkwServer == nil {
+		return errors.New("Room.mkwServer is nil")
+	}
+	return nil
 }
 
 // The room's suspension is only changed when all players voted for a suspension thats different than the rooms
@@ -307,11 +328,11 @@ func (r *Room) empty() bool {
 
 func (r *Room) full() bool {
 	numPlayers := r.numPlayers()
-	if numPlayers > 12 {
+	if numPlayers > MaxPlayerCount {
 		// error case, this is bad
 		logging.Error(moduleName, "BAD! Room", r.roomID, "has too many players! Num:", numPlayers)
 	}
-	return numPlayers == 12
+	return numPlayers == MaxPlayerCount
 }
 
 // we can't go by numAids since an aid can have at most 2 players
@@ -325,8 +346,8 @@ func (r *Room) numPlayers() uint32 {
 	return total
 }
 
-func (r *Room) localPlayerCounts() *[12]uint32 {
-	var ret [12]uint32
+func (r *Room) localPlayerCounts() *[MaxPlayerCount]uint32 {
+	var ret [MaxPlayerCount]uint32
 	for p, exists := range r.players {
 		if p == nil || !exists || p.aid > 11 {
 			continue

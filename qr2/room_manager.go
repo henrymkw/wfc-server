@@ -2,6 +2,7 @@ package qr2
 
 import (
 	"encoding/binary"
+	"fmt"
 	"math/rand"
 
 	"wwfc/common"
@@ -66,10 +67,9 @@ func HandlePacket(index uint64, data []byte, address string) {
 			return
 		}
 
-		player := validateBasics(matchRequestHeader)
-		if player == nil {
-			logging.Info(moduleName, "Player failed basic validation for match request from", address)
-			// close connection if basic validation fails
+		player, err := validateBasics(matchRequestHeader)
+		if err != nil {
+			logging.Info(moduleName, "Player failed basic validation for match request from", address, "error was", err.Error())
 			common.CloseConnection(ServerName, index)
 			buffer = nil
 			return
@@ -167,21 +167,25 @@ func HandlePacket(index uint64, data []byte, address string) {
 
 // validates basic requirements to even make a match making request
 // more can be added here
-func validateBasics(header *MatchRequestHeader) *Player {
+func validateBasics(header *MatchRequestHeader) (*Player, error) {
 	// convert to int so we can check if the player exists
 	player, _ := playerBySearchID[header.searchId]
 	if player == nil {
-		logging.Info(moduleName, "No player with searchId", header.searchId, "exists")
-		return nil
+		return nil, fmt.Errorf("No player with searchId %d exists", header.searchId)
+
 	}
 
 	// validate as much as we can, check for Authenticated, ExploitReceived, roomPointer == nil, etc
 	if !player.Authenticated {
-		logging.Info(moduleName, "PlayerId", player.PlayerId, "is not authenticated")
-		return nil
+		return nil, fmt.Errorf("PlayerId %d is not authenticated", player.PlayerId)
 	}
 
-	return player
+	if !player.localPlayerCountOk() {
+		return nil, fmt.Errorf("PlayerId %d has an invalid localPlayerCount %d", player.PlayerId, player.localPlayerCount)
+
+	}
+
+	return player, nil
 }
 
 func generateRoomID() uint32 {

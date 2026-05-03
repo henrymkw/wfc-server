@@ -10,7 +10,7 @@ import (
 
 const matchPacketMagic uint32 = 0x77846772 // 'MTCH'
 
-func SendToAid(aidBitmap uint32, numAids uint32, directAidBitmap uint32, roomId uint32, hostAid uint8, roomSuspended bool, roomCanceled bool, localPlayerCounts *[12]uint32, playerAid uint8, playerConnectionIndex uint64) error {
+func SendToAid(aidBitmap uint32, numAids uint32, directAidBitmap uint32, roomId uint32, hostAid uint8, roomSuspended bool, roomCanceled bool, localPlayerCounts *[MaxPlayerCount]uint32, playerAid uint8, playerConnectionIndex uint64) error {
 	if playerAid > 11 && playerAid != 0xff {
 		return fmt.Errorf("Invalid player aid (%d) when sending match packet", playerAid)
 	}
@@ -23,7 +23,7 @@ func SendToAid(aidBitmap uint32, numAids uint32, directAidBitmap uint32, roomId 
 }
 
 // pass in the receiver's aid, this allows us to set the aid for each send
-func toByteSlice(aidBitmap uint32, numAids uint32, directAidBitmap uint32, roomID uint32, hostAid uint8, roomSuspended bool, roomCanceled bool, localPlayerCounts *[12]uint32, playerAid uint8) []byte {
+func toByteSlice(aidBitmap uint32, numAids uint32, directAidBitmap uint32, roomID uint32, hostAid uint8, roomSuspended bool, roomCanceled bool, localPlayerCounts *[MaxPlayerCount]uint32, playerAid uint8) []byte {
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.BigEndian, matchPacketMagic)
 	binary.Write(buf, binary.BigEndian, aidBitmap)
