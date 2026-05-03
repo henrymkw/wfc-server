@@ -44,7 +44,7 @@ func handleJoinFriendRequest(joiner *Player, request *JoinFriendRequest) error {
 		return errors.New("Rooms host isn't the expected host!")
 	}
 
-	return room.tryAddPlayerToRoom(joiner, false)
+	return room.tryAddPlayer(joiner, false)
 }
 
 func handleLeaveRoomRequest(player *Player) error {
@@ -78,7 +78,7 @@ func handleSearchPublicRoomRequest(player *Player, searchReq *SearchPublicRoomRe
 		return fmt.Errorf("Player %d requested to search for a room, but their roomPointer isn't nil", player.PlayerId)
 	}
 
-	return tryFindPublicRoomForPlayer(player, searchReq.region, searchReq.mode)
+	return findPublicRoom(player, searchReq.region, searchReq.mode)
 }
 
 func handleSetLocalPlayerCount(player *Player, lpc uint8) error {

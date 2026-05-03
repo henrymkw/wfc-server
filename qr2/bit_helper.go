@@ -21,7 +21,7 @@ func getAvailableAid(aidBitmap uint32) (uint8, error) {
 	// Flip all bits, the first 1 found is the available aid
 	aid := bits.TrailingZeros32(^aidBitmap)
 	if aid >= MaxPlayerCount {
-		return 0xff, errors.New("No available aid!")
+		return NoAid, errors.New("No available aid!")
 	}
 	return uint8(aid), nil
 }

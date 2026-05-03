@@ -23,6 +23,9 @@ const (
 	ClientNoEndian     = 2
 )
 
+const MaxAid = 11
+const NoAid = 0xff
+
 type Player struct {
 	PlayerId        uint32
 	SearchId        uint64
@@ -77,7 +80,7 @@ func (p *Player) setRoomInfo(r *Room, aid uint8, isHost bool) {
 
 // sets Player fields related to being in a room. aid, roomPointer, etc.
 func (p *Player) resetRoomInfo() {
-	p.aid = 0xff
+	p.aid = NoAid
 	p.isHost = false
 	p.suspendVote = false
 

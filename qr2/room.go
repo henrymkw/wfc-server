@@ -81,7 +81,7 @@ func createRoom(creator *Player, region common.MKWServerSearchRegion, gameMode c
 		return fmt.Errorf("mkw-server process failed to start for room", room.roomID)
 	}
 
-	err := room.tryAddPlayerToRoom(creator, true)
+	err := room.tryAddPlayer(creator, true)
 	if err != nil {
 		return err
 	}
@@ -92,7 +92,7 @@ func createRoom(creator *Player, region common.MKWServerSearchRegion, gameMode c
 }
 
 // at this point, we've varified that friendsAddedOrOpenHost() returned true, the host is the rooms host according to both the room and player types
-func (r *Room) tryAddPlayerToRoom(p *Player, isCreator bool) error {
+func (r *Room) tryAddPlayer(p *Player, isCreator bool) error {
 	err := r.cantJoin(p.localPlayerCount)
 	if err != nil {
 		return fmt.Errorf("Player %d couldn't be added to room %d for reason: %s.", p.PlayerId, r.roomID, err.Error())
@@ -100,7 +100,7 @@ func (r *Room) tryAddPlayerToRoom(p *Player, isCreator bool) error {
 
 	// need to find the next available aid
 	aid, err := getAvailableAid(r.aidBitmap)
-	if err != nil || aid == 0xff {
+	if err != nil || aid == NoAid {
 		return errors.New("getAvailableAid() errored!")
 	}
 
@@ -247,7 +247,7 @@ func (r *Room) broadcastMatchPackets() {
 			hostAid = r.host.aid
 		}
 		if r.canceled {
-			hostAid = 0xff
+			hostAid = NoAid
 		}
 
 		err := SendToAid(r.aidBitmap, r.numAids, r.directAidBitmap, r.roomID, hostAid, r.suspended, r.canceled, r.localPlayerCounts(), p.aid, p.roomManagerConnnectionIndex)
@@ -349,7 +349,7 @@ func (r *Room) numPlayers() uint32 {
 func (r *Room) localPlayerCounts() *[MaxPlayerCount]uint32 {
 	var ret [MaxPlayerCount]uint32
 	for p, exists := range r.players {
-		if p == nil || !exists || p.aid > 11 {
+		if p == nil || !exists || p.aid > MaxAid {
 			continue
 		}
 

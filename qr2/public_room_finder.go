@@ -7,7 +7,7 @@ import (
 	"wwfc/logging"
 )
 
-func tryFindPublicRoomForPlayer(player *Player, region common.MKWServerSearchRegion, gameMode common.MKWServerGameMode) error {
+func findPublicRoom(player *Player, region common.MKWServerSearchRegion, gameMode common.MKWServerGameMode) error {
 	for id, room := range rooms {
 		if id == "" || room == nil {
 			continue
@@ -29,9 +29,9 @@ func tryFindPublicRoomForPlayer(player *Player, region common.MKWServerSearchReg
 		logging.Info(moduleName, "Found a public room Player", player.PlayerId, "can join!")
 
 		// to support vr based searches, we would need to loop through all rooms before adding players
-		err := room.tryAddPlayerToRoom(player, false)
+		err := room.tryAddPlayer(player, false)
 		if err != nil {
-			logging.Info(moduleName, "tryFindPublicRoomForPlayer(): %s", err.Error(), "Continuing room search")
+			logging.Info(moduleName, "findPublicRoom(): %s", err.Error(), "Continuing room search")
 			continue
 
 		}
