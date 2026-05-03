@@ -2,6 +2,7 @@ package qr2
 
 import (
 	"encoding/gob"
+	"errors"
 	"fmt"
 	"math/rand"
 	"net"
@@ -332,18 +333,16 @@ func GetSearchID(addr uint64) uint64 {
 	return 0
 }
 
-// this assumes validateBasics() has been called
-func canPlayerCreateFriendRoom(player *Player) bool {
-	if player == nil {
-		logging.Info(moduleName, "Player is nil, cannot create room")
-		return false
+func (p *Player) canCreateRoom() error {
+	if p.roomPointer != nil {
+		return errors.New("Already in a room")
 	}
 
-	if player.roomPointer != nil {
-		logging.Info(moduleName, "Player is already in a room, cannot create room")
-		return false
+	if !p.localPlayerCountOk() {
+		return fmt.Errorf("p.localPlayerCountOk() failed where p.localPlayerCount: %d", p.localPlayerCount)
 	}
-	return true
+
+	return nil
 }
 
 func (p *Player) setLocalPlayers(lpc uint8) error {

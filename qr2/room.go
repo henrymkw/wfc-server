@@ -45,8 +45,9 @@ func createRoom(creator *Player, region common.MKWServerSearchRegion, gameMode c
 		return errors.New("Creator (player creating the room) is nil! Can't create room!")
 	}
 
-	if !canPlayerCreateFriendRoom(creator) {
-		return fmt.Errorf("canPlayerCreateFriendRoom() failed for player %d", creator.PlayerId)
+	err := creator.canCreateRoom()
+	if err != nil {
+		return fmt.Errorf("canCreateRoom() failed with reason: %s", err.Error())
 	}
 
 	id := generateRoomID()
@@ -81,7 +82,7 @@ func createRoom(creator *Player, region common.MKWServerSearchRegion, gameMode c
 		return fmt.Errorf("mkw-server process failed to start for room", room.roomID)
 	}
 
-	err := room.tryAddPlayer(creator, true)
+	err = room.tryAddPlayer(creator, true)
 	if err != nil {
 		return err
 	}

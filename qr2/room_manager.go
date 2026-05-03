@@ -180,11 +180,6 @@ func validateBasics(header *MatchRequestHeader) (*Player, error) {
 		return nil, fmt.Errorf("PlayerId %d is not authenticated", player.PlayerId)
 	}
 
-	if !player.localPlayerCountOk() {
-		return nil, fmt.Errorf("PlayerId %d has an invalid localPlayerCount %d", player.PlayerId, player.localPlayerCount)
-
-	}
-
 	return player, nil
 }
 
