@@ -77,7 +77,7 @@ func handleCompleteMessage(completeMessage []byte, conn net.Conn) {
 	case MKWServerLog:
 		logging.Notice("MKW-Server Log", string(completeMessage[1:]))
 
-	case OpenFroom:
+	case OpenRoom:
 		logging.Info(moduleName, "Handling OpenRoom")
 		mkwServer, err := getMKWServerByPort(completeMessage)
 		if err != nil {
@@ -99,16 +99,16 @@ func handleCompleteMessage(completeMessage []byte, conn net.Conn) {
 			logging.Info(moduleName, err)
 			return
 		}
-		logging.Info(moduleName, "Handled OpenFroom!")
+		logging.Info(moduleName, "Handled OpenRoom!")
 
 	case JoinFriend:
-		logging.Info(moduleName, "Handling AddPlayer")
+		logging.Info(moduleName, "Handling JoinFriend")
 		if len(completeMessage) != 9 {
-			logging.Info(moduleName, "Invalid PlayerAdded msg len:", len(completeMessage))
+			logging.Info(moduleName, "Invalid JoinFriendmsg len:", len(completeMessage))
 			return
 		}
 		searchId := binary.BigEndian.Uint64(completeMessage[1:])
-		logging.Info(moduleName, "AddPlayer searchId", searchId)
+		logging.Info(moduleName, "JoinFriend searchId", searchId)
 		player := playerBySearchID[searchId]
 		if player == nil {
 			logging.Info(moduleName, "Couldn't find player by search id! SearchId:", searchId)
@@ -127,8 +127,9 @@ func handleCompleteMessage(completeMessage []byte, conn net.Conn) {
 		common.SendPacket(ServerName, player.roomManagerConnnectionIndex, MakeMKWServerAddressPacket(mkwServer.udpAddr))
 
 	case LeaveRoom:
-		logging.Info("MKW-Server Manager", "Handling CloseRoom")
-		mkwServer, err := getMKWServerByPort(completeMessage) // was using completedMessage before
+		// TODO: Don't think this is used.
+		logging.Info("MKW-Server Manager", "Handling LeaveRoom")
+		mkwServer, err := getMKWServerByPort(completeMessage)
 		if err != nil {
 			logging.Info(moduleName, err.Error())
 			return

@@ -83,7 +83,7 @@ func HandlePacket(index uint64, data []byte, address string) {
 		// get the expected packet length for each message type
 		var msgLen int
 		switch requestType {
-		case OpenFroom, LeaveRoom:
+		case OpenRoom, LeaveRoom:
 			msgLen = 0x10
 		case JoinFriend, Suspend, SearchPublicRoom, LocalPlayerCount:
 			msgLen = 0x18
@@ -102,7 +102,7 @@ func HandlePacket(index uint64, data []byte, address string) {
 		*buffer = (*buffer)[msgLen:]
 
 		switch requestType {
-		case OpenFroom:
+		case OpenRoom:
 			logging.Info(moduleName, "Received OpenRoom request from", address)
 			err := handleOpenRoomRequest(player)
 			if err != nil {
@@ -110,7 +110,7 @@ func HandlePacket(index uint64, data []byte, address string) {
 			}
 
 		case JoinFriend:
-			logging.Info(moduleName, "Received JoinFroom request from", address)
+			logging.Info(moduleName, "Received JoinFriend request from", address)
 
 			req := &JoinFriendRequest{
 				header:          *matchRequestHeader,

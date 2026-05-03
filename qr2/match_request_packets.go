@@ -34,13 +34,13 @@ type SearchPublicRoomRequest struct {
 type MatchRequestType uint8
 
 const (
-	OpenFroom        = 0
-	JoinFriend       = 1
-	LeaveRoom        = 2
-	Suspend          = 3
-	SearchPublicRoom = 4
-	LocalPlayerCount = 5
-	MKWServerLog     = 0xff
+	OpenRoom        	= 0
+	JoinFriend       	= 1 // TODO: MKW-Server refers to this as JoinRoom, make consistent
+	LeaveRoom        	= 2
+	Suspend          	= 3
+	SearchPublicRoom 	= 4
+	LocalPlayerCount 	= 5
+	MKWServerLog     	= 0xff
 )
 
 const MatchRequestHeaderMagic uint32 = 0x77826981

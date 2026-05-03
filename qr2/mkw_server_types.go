@@ -25,13 +25,6 @@ type MKWServer struct {
 // key is the room address, easy for clients/rooms to lookup
 var mkwServers = map[int]*MKWServer{}
 
-const (
-	// Requests sent from the client
-	ServerOpenFroomRequest  = 0x01
-	ServerJoinFroomRequest  = 0x02
-	ServerLeaveFroomRequest = 0x03
-)
-
 func getMKWServerByPort(msg []byte) (*MKWServer, error) {
 	if len(msg) != 3 {
 		return nil, fmt.Errorf("Invalid msg len to get mkwServer by port:", len(msg))

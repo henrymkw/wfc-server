@@ -12,7 +12,7 @@ const MKWServerAddressPacketMagic uint32 = 0x4D4B5753 // 'MKWS'
 
 // packet sent to mkw-server informing it about a new player joining
 type NewPlayerMessage struct {
-	matchRequest MatchRequestType // Always should be JoinFroom (1)
+	matchRequest MatchRequestType // Always should be JoinRoom (1)
 	ip           int32            // players ip
 	port         uint16           // players port
 	aid          uint8            // player's aid

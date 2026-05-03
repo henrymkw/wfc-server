@@ -116,8 +116,8 @@ func (mkwServer *MKWServer) sendJoinRoom(player *Player) error {
 /*
 MKW Sever expects this packet structure when a player leaves (or dcs) a froom
 
-	type LeaveFroomMessage struct {
-	    Id			LeaveFroom (0x02)
+	type LeaveRoomMessage struct {
+	    Id			LeaveRoom (0x02)
 		ip 			uint32
 		port 		uint16
 	}
@@ -136,6 +136,6 @@ func (mkwServer *MKWServer) sendLeaveRoom(player *Player) {
 	binary.Write(buf, binary.BigEndian, uint8(LeaveRoom))
 	binary.Write(buf, binary.BigEndian, int32(ip))
 	binary.Write(buf, binary.BigEndian, port)
-	logging.Info(moduleName, "sending leave room", buf.Bytes())
+	logging.Info(moduleName, "Sending MKW-Server LeaveRoom for", player.PlayerId, "aid", player.aid)
 	mkwServer.conn.Write(buf.Bytes())
 }

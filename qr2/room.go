@@ -114,7 +114,7 @@ func (r *Room) tryAddPlayerToRoom(p *Player, isCreator bool) error {
 
 	p.setRoomInfo(r, aid, isHost)
 
-	// Send a JoinFroom message to mkw-server to inform them a new player has joined.
+	// Send a JoinRoom message to mkw-server to inform them a new player has joined.
 	// Only do this here if the player isn't the room's creator. The creator is
 	// excluded here since the mkw-server process won't start if the room has just been
 	// created --- we have to wait for the process to tell us it started and is ready

@@ -286,7 +286,6 @@ func (g *GameSpySession) handleCommand(name string, commands []common.GameSpyCom
 			continue
 		}
 
-		logging.Info(g.ModuleName, "Command:", aurora.Yellow(command.Command))
 		handler(command)
 	}
 
