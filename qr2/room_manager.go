@@ -67,7 +67,7 @@ func HandlePacket(index uint64, data []byte, address string) {
 			return
 		}
 
-		player, err := validateBasics(matchRequestHeader)
+		p, err := validateBasics(matchRequestHeader)
 		if err != nil {
 			logging.Info(moduleName, "Player failed basic validation for match request from", address, "error was", err.Error())
 			common.CloseConnection(ServerName, index)
@@ -76,7 +76,7 @@ func HandlePacket(index uint64, data []byte, address string) {
 		}
 
 		// store connection information needed to send messages back to the player
-		player.setRoomManagerConnection(index, address)
+		p.setRoomManagerConnection(index, address)
 
 		requestType := matchRequestHeader.requestType
 
@@ -88,7 +88,7 @@ func HandlePacket(index uint64, data []byte, address string) {
 		case JoinFriend, Suspend, SearchPublicRoom, LocalPlayerCount:
 			msgLen = 0x18
 		default:
-			logging.Info(moduleName, "Unknown request type sent by player", player.PlayerId, "type:", requestType)
+			logging.Info(moduleName, "Unknown request type sent by player", p.PlayerId, "type:", requestType)
 			*buffer = (*buffer)[:0]
 		}
 
@@ -103,14 +103,14 @@ func HandlePacket(index uint64, data []byte, address string) {
 
 		switch requestType {
 		case OpenRoom:
-			logging.Info(moduleName, "Received OpenRoom request from", address)
-			err := handleOpenRoomRequest(player)
+			logging.Info(moduleName, "Received OpenRoom request from player", p)
+			err := handleOpenRoomRequest(p)
 			if err != nil {
 				logging.Info(moduleName, err.Error())
 			}
 
 		case JoinFriend:
-			logging.Info(moduleName, "Received JoinFriend request from", address)
+			logging.Info(moduleName, "Received JoinFriend request from", p.PlayerId)
 
 			req := &JoinFriendRequest{
 				header:          *matchRequestHeader,
@@ -118,20 +118,20 @@ func HandlePacket(index uint64, data []byte, address string) {
 				searchRegion:    common.MKWServerSearchRegion(msg[0x14]),
 			}
 
-			err := handleJoinFriendRequest(player, req)
+			err := handleJoinFriendRequest(p, req)
 			if err != nil {
-				logging.Info(moduleName, "JoinFriend failed. Reason:", err.Error())
+				logging.Info(moduleName, "JoinFriend failed for player %d and profileId %d with Reason:", err.Error())
 			}
 		case LeaveRoom:
-			logging.Info(moduleName, "Received LeaveRoom request from", address)
-			err := handleLeaveRoomRequest(player)
+			logging.Info(moduleName, "Received LeaveRoom request from", p.PlayerId)
+			err := handleLeaveRoomRequest(p)
 			if err != nil {
 				logging.Info(moduleName, "LeaveRoom failed for reason:", err.Error())
 			}
 
 		case Suspend:
 			suspendRequest := msg[0x10] != 0
-			err := handleSuspendRequest(player, suspendRequest)
+			err := handleSuspendRequest(p, suspendRequest)
 			if err != nil {
 				logging.Info(moduleName, "Suspend failed for reason:", err.Error())
 			}
@@ -142,8 +142,8 @@ func HandlePacket(index uint64, data []byte, address string) {
 				region: common.MKWServerSearchRegion(msg[0x10]),
 				mode:   common.MKWServerGameMode(msg[0x11]),
 			}
-			logging.Info(moduleName, "Received SearchPublicRoom from", address)
-			err := handleSearchPublicRoomRequest(player, searchReq)
+			logging.Info(moduleName, "Received SearchPublicRoom from", p.PlayerId)
+			err := handleSearchPublicRoomRequest(p, searchReq)
 			if err != nil {
 				logging.Info(moduleName, "SearchPublicRoom failed with reason:", err.Error())
 			}
@@ -152,9 +152,9 @@ func HandlePacket(index uint64, data []byte, address string) {
 			// Simple packet structure, just get the localPlayerCount from offset 0x10
 			localPlayerCount := msg[0x10]
 
-			logging.Info(moduleName, "Received LocalPlayerCount from", address, "where localPlayers is", localPlayerCount)
+			logging.Info(moduleName, "Received LocalPlayerCount from", p.PlayerId, "where localPlayers is", localPlayerCount)
 
-			err := handleSetLocalPlayerCount(player, localPlayerCount)
+			err := handleSetLocalPlayerCount(p, localPlayerCount)
 			if err != nil {
 				logging.Info(moduleName, err.Error())
 			}
@@ -169,18 +169,18 @@ func HandlePacket(index uint64, data []byte, address string) {
 // more can be added here
 func validateBasics(header *MatchRequestHeader) (*Player, error) {
 	// convert to int so we can check if the player exists
-	player, _ := playerBySearchID[header.searchId]
-	if player == nil {
+	p, _ := playerBySearchID[header.searchId]
+	if p == nil {
 		return nil, fmt.Errorf("No player with searchId %d exists", header.searchId)
 
 	}
 
 	// validate as much as we can, check for Authenticated, ExploitReceived, roomPointer == nil, etc
-	if !player.Authenticated {
-		return nil, fmt.Errorf("PlayerId %d is not authenticated", player.PlayerId)
+	if !p.Authenticated {
+		return nil, fmt.Errorf("PlayerId %d is not authenticated", p.PlayerId)
 	}
 
-	return player, nil
+	return p, nil
 }
 
 func generateRoomID() uint32 {

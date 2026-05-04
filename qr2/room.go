@@ -134,7 +134,7 @@ func (r *Room) tryAddPlayer(p *Player, isCreator bool) error {
 	return nil
 }
 
-func (r *Room) removePlayerFromRoom(p *Player) error {
+func (r *Room) removePlayer(p *Player) error {
 	if p == nil {
 		return errors.New("Can't remove a nil player!")
 	}
@@ -251,7 +251,7 @@ func (r *Room) broadcastMatchPackets() {
 			hostAid = NoAid
 		}
 
-		err := SendToAid(r.aidBitmap, r.numAids, r.directAidBitmap, r.roomID, hostAid, r.suspended, r.canceled, r.localPlayerCounts(), p.aid, p.roomManagerConnnectionIndex)
+		err := sendToAid(r.aidBitmap, r.numAids, r.directAidBitmap, r.roomID, hostAid, r.suspended, r.canceled, r.localPlayerCounts(), p.aid, p.roomManagerConnnectionIndex)
 		if err != nil {
 			p.numConsecutiveRoomManagerSendErrors += 1
 		} else {
@@ -262,7 +262,7 @@ func (r *Room) broadcastMatchPackets() {
 			logging.Info(moduleName, "Player timed out, removing from room", aurora.Cyan(p.Addr.String()), "Aid", aurora.Cyan(p.aid))
 			p.numConsecutiveRoomManagerSendErrors = 0
 			logging.Info(moduleName, "removeFromRoom() called!!!!!!")
-			r.removePlayerFromRoom(p)
+			r.removePlayer(p)
 		}
 
 	}

@@ -101,7 +101,7 @@ func removePlayer(addr uint64) {
 	// remove player from room if they're in one
 	room := player.roomPointer
 	if room != nil {
-		room.removePlayerFromRoom(player)
+		room.removePlayer(player)
 	}
 
 	if player.login != nil {
@@ -268,26 +268,6 @@ func (player *Player) setProfileID(moduleName string, newPID string, gpcmIP stri
 	return true
 }
 
-func DoesPlayerExist(addr string) bool {
-	logging.Info("QR2", "Checking player existence for", aurora.Cyan(addr))
-	mutex.Lock()
-	_, playerExists := players[common.MakeLookupAddr(addr)]
-	mutex.Unlock()
-	return playerExists
-}
-
-func IsPlayerInRoom(addr string) bool {
-	mutex.Lock()
-	player, _ := players[common.MakeLookupAddr(addr)]
-	mutex.Unlock()
-
-	if player == nil || player.roomPointer == nil {
-		return false
-	}
-
-	return player.roomPointer != nil
-}
-
 // Get a copy of the list of servers
 func GetPlayerServers() []map[string]string {
 	var servers []map[string]string
@@ -320,17 +300,6 @@ func GetPlayerServers() []map[string]string {
 	}
 
 	return servers
-}
-
-func GetSearchID(addr uint64) uint64 {
-	mutex.Lock()
-	defer mutex.Unlock()
-
-	if player := players[addr]; player != nil {
-		return player.SearchId
-	}
-
-	return 0
 }
 
 func (p *Player) canCreateRoom() error {
@@ -402,43 +371,25 @@ func loadPlayers() error {
 	return nil
 }
 
-func (p *Player) GetProfileId() string {
-	return p.Data["dwc_pid"]
-}
-
-// verify that the guest can join the host
-// one must be true:
-// - host has open-host enabled
+// Returns nil when either:
+// - open-host is enabled
 // - both players have each other added
-func (p *Player) friendsAddedOrOpenHost(profileId uint32) bool {
-	// get friend's login info from profileId
-	login := logins[profileId]
-
-	if login == nil {
-		logging.Info(moduleName, p.aid, "requested to join", profileId, "which doesn't exist!")
-		return false
-	}
-
+func (p *Player) canJoinFriend(l *LoginInfo) error {
 	// check for open host
-	if login.OpenHost {
-		logging.Info(moduleName, p.PlayerId, "can join the room since friend has Open Host on")
-		return true
+	if !l.OpenHost {
+		return errors.New("Open host is disabled")
 	}
 
-	// get the joiners login to get their profileId
-	joinersLogin := p.login
-	if joinersLogin == nil {
-		logging.Info(moduleName, "joiners LoginInfo is null (which shouldn't happen)")
-		return false
+	if p.login == nil {
+		return errors.New("Player's login is nil")
+
 	}
 
-	for _, friendsFriend := range login.friendsList {
-		if friendsFriend == joinersLogin.ProfileID {
-			logging.Info(moduleName, "friends have eachother added, can join room!")
-			return true
+	for _, friendsFriend := range l.friendsList {
+		if friendsFriend == p.login.ProfileID {
+			return nil
 		}
 	}
 
-	logging.Info(moduleName, "Cannot join", profileId)
-	return false
+	return errors.New("Player's aren't mutural friends")
 }

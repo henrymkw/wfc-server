@@ -22,67 +22,69 @@ func handleOpenRoomRequest(host *Player) error {
 func handleJoinFriendRequest(joiner *Player, request *JoinFriendRequest) error {
 	logging.Info(moduleName, "Player wants to join a friend", aurora.Cyan(request.friendProfileId), "and searchRegion", request.searchRegion)
 
-	friendProfileId := request.friendProfileId
-
-	canJoinRoom := joiner.friendsAddedOrOpenHost(friendProfileId)
-	if !canJoinRoom {
-		return fmt.Errorf("Player %d can't join friends room since they're not friends!", joiner.PlayerId)
+	l := logins[request.friendProfileId]
+	if l == nil {
+		return errors.New("Login with friendProfileId doesn't exist")
 	}
 
-	friend := logins[friendProfileId].player
-	room := friend.roomPointer
-	if room == nil {
-		return errors.New("can't join room since host has no room!")
+	err := joiner.canJoinFriend(l)
+	if err != nil {
+		return err
 	}
 
-	// The bellow checks are already checked by the client. This serves as backend validation
-	if room.Region != request.searchRegion {
-		return fmt.Errorf("Can't join friend room due to mismatched search regions! Room's is region %d while joiner's is %d", room.Region, request.searchRegion)
+	friend := l.player
+	r := friend.roomPointer
+	if r == nil {
+		return errors.New("Friend isn't in a room")
 	}
 
-	if room.Region == common.Private && room.host != friend {
+	if r.Region != request.searchRegion {
+		return fmt.Errorf("Region mismatch. Requested is %d while friend's is %d", request.searchRegion, r.Region)
+	}
+
+	if r.Region == common.Private && r.host != friend {
 		return errors.New("Rooms host isn't the expected host!")
 	}
 
-	return room.tryAddPlayer(joiner, false)
+	return r.tryAddPlayer(joiner, false)
 }
 
-func handleLeaveRoomRequest(player *Player) error {
-	room := player.roomPointer
-	if room == nil {
+func handleLeaveRoomRequest(p *Player) error {
+	r := p.roomPointer
+	if r == nil {
 		return fmt.Errorf("Player %d sent a LeaveRoom request when they're roomless!")
 	}
 
-	return room.removePlayerFromRoom(player)
+	return r.removePlayer(p)
 }
 
-func handleSuspendRequest(player *Player, requestSuspend bool) error {
-	if player.suspendVote == requestSuspend {
+func handleSuspendRequest(p *Player, requestSuspend bool) error {
+	if p.suspendVote == requestSuspend {
 		return nil
 	}
 
-	room := player.roomPointer
-	if room == nil {
-		return fmt.Errorf("Player %d requested to suspend (value: %d ) but doesn't belong to a room", player.PlayerId, requestSuspend)
+	r := p.roomPointer
+	if r == nil {
+		return fmt.Errorf("Player %d requested to suspend (value: %d ) but doesn't belong to a room", p.PlayerId, requestSuspend)
 	}
 
-	player.suspendVote = requestSuspend
+	p.suspendVote = requestSuspend
 
 	// Try to update room suspension
-	room.updateSuspension()
+	r.updateSuspension()
 	return nil
 }
 
-func handleSearchPublicRoomRequest(player *Player, searchReq *SearchPublicRoomRequest) error {
-	if player.roomPointer != nil {
-		return fmt.Errorf("Player %d requested to search for a room, but their roomPointer isn't nil", player.PlayerId)
+func handleSearchPublicRoomRequest(p *Player, searchReq *SearchPublicRoomRequest) error {
+	if p.roomPointer != nil {
+		return fmt.Errorf("Player %d requested to search for a room, but their roomPointer isn't nil", p.PlayerId)
 	}
 
-	return findPublicRoom(player, searchReq.region, searchReq.mode)
+	return findPublicRoom(p, searchReq.region, searchReq.mode)
 }
 
-func handleSetLocalPlayerCount(player *Player, lpc uint8) error {
-	err := player.setLocalPlayers(lpc)
+func handleSetLocalPlayerCount(p *Player, lpc uint8) error {
+	err := p.setLocalPlayers(lpc)
 
 	return err
 }
