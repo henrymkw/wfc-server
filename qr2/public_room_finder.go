@@ -33,7 +33,8 @@ func findPublicRoom(p *Player, region common.MKWServerSearchRegion, gameMode com
 		if err != nil {
 			logging.Info(moduleName, "findPublicRoom(): %s", err.Error(), "Continuing room search")
 			continue
-
+		} else {
+			return nil
 		}
 	}
 
